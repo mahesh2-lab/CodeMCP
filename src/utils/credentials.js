@@ -222,6 +222,10 @@ export function listCredentialKeys() {
  */
 export function clearAllCredentials() {
   saveAllCredentials({});
+  const coduitFile = path.join(CODUIT_DIR, "credentials.enc");
+  const devnetFile = path.join(DEVNET_DIR, "credentials.enc");
+  try { if (fs.existsSync(coduitFile)) fs.unlinkSync(coduitFile); } catch {}
+  try { if (fs.existsSync(devnetFile)) fs.unlinkSync(devnetFile); } catch {}
 }
 
 
