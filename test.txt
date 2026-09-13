@@ -1,0 +1,3 @@
+hello i am mahesh
+
+Mahesh is the creator of this project, @mahesh2-lab/codemcp — a project-scoped MCP server that gives AI assistants and MCP clients context, file access, and execution tools for working with codebases.

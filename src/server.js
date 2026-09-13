@@ -11,6 +11,7 @@ import { logger } from "./utils/logger.js";
 import { getEnv } from "./utils/env.js";
 import { findAvailablePort } from "./utils/ports.js";
 import { printBox } from "./utils/box.js";
+import { isApprovalRequired } from "./services/approval.js";
 
 export const app = express();
 
@@ -74,6 +75,11 @@ export const httpServer = app.listen(PORT, async () => {
       project.configFile ? pc.green(path.basename(project.configFile)) : pc.yellow("(auto-generated)")
     }`,
     `${pc.bold("Permission :")} ${permissionText}`,
+    `${pc.bold("Approval   :")} ${
+      isApprovalRequired(project, "WRITE")
+        ? pc.yellow("Enabled (Ask before changes)")
+        : pc.dim("Disabled (Auto-apply)")
+    }`,
     `${pc.bold("Context    :")} ${
       project.contextFile ? pc.white(project.contextFile) : pc.dim("(none)")
     }`,

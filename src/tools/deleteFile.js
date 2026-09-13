@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { z } from "zod";
 import { PathGuardError } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
+import { isApprovalRequired, requestApproval } from "../services/approval.js";
 import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
 
 export function registerDeleteFileTool(server, project) {
@@ -37,8 +38,31 @@ export function registerDeleteFileTool(server, project) {
         throw new PathGuardError("Path is a directory, not a file", 400);
       }
 
-      fs.unlinkSync(absolutePath);
       const normalized = relPath.replace(/\\/g, "/");
+
+      // Interactive approval check
+      if (isApprovalRequired(ctx.project, "DELETE")) {
+        const approval = await requestApproval({
+          type: "DELETE",
+          path: normalized,
+          size: stat.size,
+        });
+
+        if (!approval.approved) {
+          logger.rejected("DELETE", normalized, approval.reason || "Rejected by user");
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `File deletion rejected by user: ${approval.reason || "User rejected this deletion."}`,
+              },
+            ],
+          };
+        }
+      }
+
+      fs.unlinkSync(absolutePath);
       const message = `Successfully deleted ${normalized}`;
 
       logger.toolDelete(normalized);

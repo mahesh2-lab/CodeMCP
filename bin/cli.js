@@ -38,9 +38,19 @@ async function launchServer(targetPath, options = {}) {
     process.env.PORT = String(options.port);
   }
 
+  if (options.confirm === true) {
+    process.env.CONFIRM_CHANGES = "true";
+  } else if (options.confirm === false) {
+    process.env.CONFIRM_CHANGES = "false";
+  }
+
   let targetDir;
   if (targetPath) {
     targetDir = path.resolve(process.cwd(), targetPath);
+    if (!fs.existsSync(targetDir)) {
+      console.error(pc.red(`Error: Directory not found: ${targetDir}`));
+      process.exit(1);
+    }
   } else if (process.cwd() !== packageRoot) {
     targetDir = process.cwd();
   } else {
@@ -69,6 +79,8 @@ program
   .option("-p, --port <number>", "Local port to listen on", "4173")
   .option("--no-tunnel", "Disable automatic ngrok tunnel")
   .option("-y, --yes", "Skip interactive prompts and use detected defaults")
+  .option("--confirm", "Require interactive user confirmation before applying file modifications")
+  .option("--no-confirm", "Disable confirmation prompts and auto-apply modifications")
   .action(async (targetPath, options) => {
     await launchServer(targetPath, options);
   });
@@ -159,8 +171,13 @@ const explicitCommands = new Set(["start", "init", "info", "credentials", "help"
 const helpOrVersion = new Set(["--help", "-h", "--version", "-v", "help"]);
 const firstArg = process.argv[2];
 
-if (!firstArg || (!explicitCommands.has(firstArg) && !helpOrVersion.has(firstArg))) {
-  process.argv.splice(2, 0, "start");
+const isOption = Boolean(firstArg && firstArg.startsWith("-"));
+const isExistingPath = Boolean(firstArg && fs.existsSync(path.resolve(process.cwd(), firstArg)));
+
+if (!firstArg || isOption || isExistingPath) {
+  if (!firstArg || (!explicitCommands.has(firstArg) && !helpOrVersion.has(firstArg))) {
+    process.argv.splice(2, 0, "start");
+  }
 }
 
 program.parse(process.argv);

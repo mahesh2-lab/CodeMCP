@@ -113,6 +113,15 @@ export const logger = {
     );
   },
 
+  // Rejected changes (by user)
+  rejected(actionName, target, reason) {
+    const badge = pc.bold(pc.red("REJECT "));
+    const action = pc.bold(actionName.toUpperCase().padEnd(6));
+    console.warn(
+      `${this.mcpPrefix()} ${badge} ${action} ${pc.white(target)} ${pc.dim("·")} ${pc.yellow(reason)}`
+    );
+  },
+
   // Tool Warnings / Errors
   warn(actionName, target, message) {
     const badge = pc.bold(pc.yellow("WARN   "));

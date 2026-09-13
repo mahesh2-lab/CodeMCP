@@ -48,6 +48,7 @@ export function findProjectConfig(targetDir) {
         name: manifest.name || path.basename(projectRoot),
         description: manifest.description || "",
         permission: manifest.permission || "both",
+        approval: manifest.approval ?? false,
         contextFile,
         context: fileContext || manifest.context || "",
         root: projectRoot,

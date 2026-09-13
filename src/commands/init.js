@@ -179,6 +179,7 @@ ${description}
     name: name || defaultName,
     description: description || defaultDesc,
     permission,
+    approval: false,
     contextFile: "CONTEXT.md",
   };
 

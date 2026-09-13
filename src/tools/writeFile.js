@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import { PathGuardError } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
+import { isApprovalRequired, requestApproval } from "../services/approval.js";
 import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
 
 export function registerWriteFileTool(server, project) {
@@ -31,14 +32,45 @@ export function registerWriteFileTool(server, project) {
         throw new PathGuardError("Writing to this file is blocked (ignored or sensitive)", 403);
       }
 
+      const normalized = relPath.replace(/\\/g, "/");
+      const content = args.content ?? "";
+
+      // Interactive approval check
+      if (isApprovalRequired(ctx.project, "WRITE")) {
+        let oldContent = "";
+        if (fs.existsSync(absolutePath)) {
+          try {
+            oldContent = fs.readFileSync(absolutePath, "utf8");
+          } catch {}
+        }
+
+        const approval = await requestApproval({
+          type: "WRITE",
+          path: normalized,
+          oldContent,
+          newContent: content,
+        });
+
+        if (!approval.approved) {
+          logger.rejected("WRITE", normalized, approval.reason || "Rejected by user");
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `Changes rejected by user: ${approval.reason || "User rejected this file modification."}`,
+              },
+            ],
+          };
+        }
+      }
+
       const dir = path.dirname(absolutePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      const content = args.content ?? "";
       fs.writeFileSync(absolutePath, content, "utf8");
-      const normalized = relPath.replace(/\\/g, "/");
       const bytesWritten = Buffer.byteLength(content, "utf8");
       const message = `Successfully wrote ${bytesWritten} bytes to ${normalized}`;
 

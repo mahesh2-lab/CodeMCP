@@ -19,6 +19,7 @@ CodeMCP allows AI assistants to directly inspect your file tree, search code, re
 - 🔒 **Encrypted Credential Storage**: Machine-bound AES-256-GCM vault (`~/.codemcp/credentials.enc`) protects your tokens safely without plaintext files.
 - 🛡️ **PathGuard File Sandboxing**: Prevents directory traversal (`../`) and blocks sensitive files (`.git`, `node_modules`, private keys) from being accessed.
 - 🎚️ **Granular Tool Permissions**: Easily configure access tiers (`both`, `read`-only, or `write`-only) to match your workflow.
+- ✋ **Interactive Accept / Reject**: Review colorized line diffs in real time before AI file modifications or deletions are applied (`--confirm` flag or `"approval": true`).
 - 🧠 **Context & Guidelines Injection**: Automatically provides coding guidelines and architecture notes from `CONTEXT.md` to connected AI models.
 - 🔌 **Dynamic Port Handling**: Defaults to port `4173` and automatically picks the next open port if occupied.
 
