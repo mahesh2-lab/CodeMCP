@@ -38,18 +38,18 @@ async function launchServer(targetPath, options = {}) {
     process.env.PORT = String(options.port);
   }
 
-  if (options.approval !== undefined) {
-    if (typeof options.approval === "string") {
-      process.env.APPROVAL_MODE = options.approval.toLowerCase();
-    } else if (options.approval === true) {
+  const approvalFlag = options.approval !== undefined 
+    ? options.approval 
+    : (options.ask !== undefined ? options.ask : options.confirm);
+
+  if (approvalFlag !== undefined) {
+    if (typeof approvalFlag === "string") {
+      process.env.APPROVAL_MODE = approvalFlag.toLowerCase();
+    } else if (approvalFlag === true) {
       process.env.APPROVAL_MODE = "true";
-    } else if (options.approval === false) {
+    } else if (approvalFlag === false) {
       process.env.APPROVAL_MODE = "false";
     }
-  } else if (options.confirm === true) {
-    process.env.APPROVAL_MODE = "true";
-  } else if (options.confirm === false) {
-    process.env.APPROVAL_MODE = "false";
   }
 
   let targetDir;
@@ -87,9 +87,10 @@ program
   .option("-p, --port <number>", "Local port to listen on", "4173")
   .option("--no-tunnel", "Disable automatic ngrok tunnel")
   .option("-y, --yes", "Skip interactive prompts and use detected defaults")
-  .option("-a, --approval [mode]", "Require confirmation before applying file modifications (e.g. true, false, destructive)")
+  .option("-a, --approval [mode]", "Require confirmation before applying file modifications")
+  .option("-c, --confirm", "Alias for -a / --approval")
+  .option("--ask", "Alias for -a / --approval")
   .option("--no-approval", "Disable confirmation prompts and auto-apply modifications")
-  .option("--confirm", "Alias for --approval")
   .option("--no-confirm", "Alias for --no-approval")
   .action(async (targetPath, options) => {
     await launchServer(targetPath, options);
@@ -115,6 +116,34 @@ program
   .description("Display project metadata and source file count")
   .action((targetPath) => {
     infoProject(targetPath || process.cwd());
+  });
+
+program
+  .command("approval [state]")
+  .alias("approve")
+  .description("View or toggle approval in codemcp.json (e.g. 'codemcp approval on' or 'codemcp approval off')")
+  .action((state) => {
+    const configPath = path.join(process.cwd(), "codemcp.json");
+    if (!fs.existsSync(configPath)) {
+      console.log(pc.yellow(`No codemcp.json found in ${process.cwd()}.`));
+      return;
+    }
+    try {
+      const manifest = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      if (!state) {
+        const current = manifest.approval ? pc.green("ON (Ask before changes)") : pc.dim("OFF (Auto-apply)");
+        console.log(`\n  Approval is currently: ${current}`);
+        console.log(`  To change: ${pc.cyan("codemcp approval on")} or ${pc.cyan("codemcp approval off")}\n`);
+        return;
+      }
+      const normalized = state.toLowerCase();
+      const enable = normalized === "on" || normalized === "true" || normalized === "yes" || normalized === "1";
+      manifest.approval = enable;
+      fs.writeFileSync(configPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+      console.log(pc.green(`✔ Approval set to ${enable ? pc.bold("ON (Ask before changes)") : pc.dim("OFF (Auto-apply)")} in codemcp.json\n`));
+    } catch (err) {
+      console.error(pc.red(`Failed to update codemcp.json: ${err.message}`));
+    }
   });
 
 const credCmd = program
@@ -177,7 +206,7 @@ credCmd
   });
 
 
-const explicitCommands = new Set(["start", "init", "info", "credentials", "help"]);
+const explicitCommands = new Set(["start", "init", "info", "credentials", "approval", "approve", "help"]);
 const helpOrVersion = new Set(["--help", "-h", "--version", "-v", "help"]);
 const firstArg = process.argv[2];
 
