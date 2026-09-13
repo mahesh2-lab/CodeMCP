@@ -4,8 +4,6 @@ import os from "node:os";
 import path from "node:path";
 
 const CODEMCP_DIR = path.join(os.homedir(), ".codemcp");
-const CODUIT_DIR = path.join(os.homedir(), ".coduit");
-const DEVNET_DIR = path.join(os.homedir(), ".devnet");
 const VAULT_DIR = CODEMCP_DIR;
 const VAULT_FILE = path.join(VAULT_DIR, "credentials.enc");
 
@@ -72,58 +70,23 @@ function tryDecrypt(payload, key) {
 
 /**
  * Reads and decrypts all credentials from ~/.codemcp/credentials.enc.
- * Seamlessly migrates from legacy ~/.coduit or ~/.devnet if present.
  *
  * @returns {Record<string, string>}
  */
 export function getAllCredentials() {
-  let targetFile = VAULT_FILE;
-
   if (!fs.existsSync(VAULT_FILE)) {
-    const coduitFile = path.join(CODUIT_DIR, "credentials.enc");
-    const devnetFile = path.join(DEVNET_DIR, "credentials.enc");
-
-    if (fs.existsSync(coduitFile)) {
-      targetFile = coduitFile;
-    } else if (fs.existsSync(devnetFile)) {
-      targetFile = devnetFile;
-    } else {
-      return {};
-    }
+    return {};
   }
 
   try {
-    const raw = fs.readFileSync(targetFile, "utf-8");
+    const raw = fs.readFileSync(VAULT_FILE, "utf-8");
     const payload = JSON.parse(raw);
 
     if (!payload.iv || !payload.authTag || !payload.ciphertext) {
       return {};
     }
 
-    let creds = null;
-
-    // 1. Try current CodeMCP encryption key
-    try {
-      creds = tryDecrypt(payload, deriveEncryptionKey("codemcp-secure-vault-salt-v1"));
-    } catch {
-      // 2. Fall back to Coduit encryption key
-      try {
-        creds = tryDecrypt(payload, deriveEncryptionKey("coduit-mcp-secure-vault-salt-v1"));
-      } catch {
-        // 3. Fall back to legacy DevNet encryption key
-        creds = tryDecrypt(payload, deriveEncryptionKey("devnet-mcp-secure-vault-salt-v1"));
-      }
-
-      if (creds) {
-        saveAllCredentials(creds);
-      }
-    }
-
-    // If loaded from older path, save to ~/.codemcp/credentials.enc
-    if (creds && targetFile !== VAULT_FILE) {
-      saveAllCredentials(creds);
-    }
-
+    const creds = tryDecrypt(payload, deriveEncryptionKey("codemcp-secure-vault-salt-v1"));
     return creds || {};
   } catch (err) {
     console.warn(`[credentials] Warning: Could not read secure vault: ${err.message}`);
@@ -222,11 +185,6 @@ export function listCredentialKeys() {
  */
 export function clearAllCredentials() {
   saveAllCredentials({});
-  const coduitFile = path.join(CODUIT_DIR, "credentials.enc");
-  const devnetFile = path.join(DEVNET_DIR, "credentials.enc");
-  try { if (fs.existsSync(coduitFile)) fs.unlinkSync(coduitFile); } catch {}
-  try { if (fs.existsSync(devnetFile)) fs.unlinkSync(devnetFile); } catch {}
 }
 
-
-export { VAULT_FILE, VAULT_DIR, CODEMCP_DIR, CODUIT_DIR, DEVNET_DIR };
+export { VAULT_FILE, VAULT_DIR, CODEMCP_DIR };
