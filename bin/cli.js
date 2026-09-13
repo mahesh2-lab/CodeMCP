@@ -13,11 +13,12 @@ import {
   clearAllCredentials,
   VAULT_FILE,
 } from "../src/utils/credentials.js";
+import { getCustomHelpText } from "../src/utils/help.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
 
-let pkgVersion = "1.0.7";
+let pkgVersion = "1.1.0";
 try {
   const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
   if (pkg.version) pkgVersion = pkg.version;
@@ -29,6 +30,8 @@ program
   .name("codemcp")
   .description(pc.cyan("Project-scoped MCP server providing context, file access, and execution tools for AI assistants"))
   .version(pkgVersion);
+
+program.helpInformation = () => getCustomHelpText(pkgVersion);
 
 async function launchServer(targetPath, options = {}) {
   if (options.tunnel === false) {
