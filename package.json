@@ -1,0 +1,60 @@
+{
+  "name": "@mahesh2-lab/codemcp",
+  "version": "1.0.7",
+  "description": "Project-scoped MCP server providing context, file access, and execution tools for AI assistants and MCP clients",
+  "main": "dist/server.js",
+  "type": "module",
+  "bin": {
+    "codemcp": "dist/cli.js",
+    "coduit": "dist/cli.js",
+    "devnet-mcp": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node dist/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node scripts/test-client.js",
+    "compile": "node scripts/build.js",
+    "build": "node scripts/build.js",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "codemcp",
+    "mcp",
+    "model-context-protocol",
+    "ai-assistant",
+    "agent",
+    "llm",
+    "code-review",
+    "developer-tools"
+  ],
+  "author": "",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@ngrok/ngrok": "^1.7.0",
+    "commander": "^15.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "picocolors": "^1.1.1",
+    "zod": "^4.6.2"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "javascript-obfuscator": "^5.7.0"
+  }
+}
