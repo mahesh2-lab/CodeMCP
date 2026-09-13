@@ -37,7 +37,19 @@ console.log("🧪 Running Accept/Reject & Diff verification tests...\n");
   assert.strictEqual(isApprovalRequired({ approval: "destructive" }, "WRITE"), false);
   assert.strictEqual(isApprovalRequired({ approval: "destructive" }, "DELETE"), true);
 
-  // CLI override
+  // CLI override via APPROVAL_MODE or CONFIRM_CHANGES
+  process.env.APPROVAL_MODE = "true";
+  assert.strictEqual(isApprovalRequired({ approval: false }, "WRITE"), true, "CLI --approval should override config");
+
+  process.env.APPROVAL_MODE = "false";
+  assert.strictEqual(isApprovalRequired({ approval: true }, "WRITE"), false, "CLI --no-approval should override config");
+
+  process.env.APPROVAL_MODE = "destructive";
+  assert.strictEqual(isApprovalRequired({ approval: false }, "WRITE"), false);
+  assert.strictEqual(isApprovalRequired({ approval: false }, "DELETE"), true);
+
+  delete process.env.APPROVAL_MODE;
+
   process.env.CONFIRM_CHANGES = "true";
   assert.strictEqual(isApprovalRequired({ approval: false }, "WRITE"), true, "CLI --confirm should override config");
 

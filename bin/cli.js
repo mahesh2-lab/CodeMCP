@@ -38,10 +38,18 @@ async function launchServer(targetPath, options = {}) {
     process.env.PORT = String(options.port);
   }
 
-  if (options.confirm === true) {
-    process.env.CONFIRM_CHANGES = "true";
+  if (options.approval !== undefined) {
+    if (typeof options.approval === "string") {
+      process.env.APPROVAL_MODE = options.approval.toLowerCase();
+    } else if (options.approval === true) {
+      process.env.APPROVAL_MODE = "true";
+    } else if (options.approval === false) {
+      process.env.APPROVAL_MODE = "false";
+    }
+  } else if (options.confirm === true) {
+    process.env.APPROVAL_MODE = "true";
   } else if (options.confirm === false) {
-    process.env.CONFIRM_CHANGES = "false";
+    process.env.APPROVAL_MODE = "false";
   }
 
   let targetDir;
@@ -79,8 +87,10 @@ program
   .option("-p, --port <number>", "Local port to listen on", "4173")
   .option("--no-tunnel", "Disable automatic ngrok tunnel")
   .option("-y, --yes", "Skip interactive prompts and use detected defaults")
-  .option("--confirm", "Require interactive user confirmation before applying file modifications")
-  .option("--no-confirm", "Disable confirmation prompts and auto-apply modifications")
+  .option("-a, --approval [mode]", "Require confirmation before applying file modifications (e.g. true, false, destructive)")
+  .option("--no-approval", "Disable confirmation prompts and auto-apply modifications")
+  .option("--confirm", "Alias for --approval")
+  .option("--no-confirm", "Alias for --no-approval")
   .action(async (targetPath, options) => {
     await launchServer(targetPath, options);
   });

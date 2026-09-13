@@ -12,9 +12,12 @@ import { getEnv } from "../utils/env.js";
  */
 export function isApprovalRequired(project, actionType) {
   // Explicit CLI flag override via env
-  const envConfirm = getEnv("CONFIRM_CHANGES", "");
-  if (envConfirm === "false" || envConfirm === "0") return false;
-  if (envConfirm === "true" || envConfirm === "1") return true;
+  const envApproval = getEnv("APPROVAL_MODE", "") || getEnv("CONFIRM_CHANGES", "");
+  if (envApproval === "false" || envApproval === "0" || envApproval === "never") return false;
+  if (envApproval === "true" || envApproval === "1" || envApproval === "always") return true;
+  if (envApproval === "destructive") {
+    return actionType === "DELETE" || actionType === "EXEC";
+  }
 
   const projectApproval = project?.approval;
   if (projectApproval === true || projectApproval === "always") return true;

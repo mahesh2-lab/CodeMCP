@@ -80,9 +80,11 @@ Apply these changes? [Press y=Accept / n=Reject / d=Full diff]:
 * Press **`d`**: Expands and displays the complete diff.
 
 ### How to turn on Change Approval:
-* Run with the `--confirm` flag:
+* Run with the `--approval` (or `-a`) flag:
   ```bash
-  codemcp --confirm
+  codemcp --approval
+  # or
+  codemcp -a
   ```
 * Or add `"approval": true` to your `codemcp.json`:
   ```json
@@ -90,6 +92,7 @@ Apply these changes? [Press y=Accept / n=Reject / d=Full diff]:
     "approval": true
   }
   ```
+*(You can also use `codemcp --no-approval` to temporarily bypass prompts)*
 
 ---
 
@@ -161,7 +164,8 @@ Create a `CONTEXT.md` in your project root. CodeMCP automatically delivers these
 | :--- | :--- |
 | `codemcp` | Starts the server in the current directory. |
 | `codemcp /path/to/project` | Starts the server for a specific project. |
-| `codemcp --confirm` | Starts the server with interactive change approval enabled. |
+| `codemcp --approval` (or `-a`) | Starts the server with change approval enabled. |
+| `codemcp --no-approval` | Starts the server with change approval disabled. |
 | `codemcp --no-tunnel` | Runs locally only (no public HTTPS tunnel). |
 | `codemcp info` | Shows project summary, file count, and active permission tier. |
 | `codemcp init` | Interactive setup to create `codemcp.json` and `CONTEXT.md`. |
