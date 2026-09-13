@@ -19,6 +19,7 @@ export async function initProject(targetDir = process.cwd(), options = {}) {
   const resolvedDir = path.resolve(targetDir);
   const projectJsonPath = path.join(resolvedDir, "project.json");
   const mcpIgnorePath = path.join(resolvedDir, ".mcpignore");
+  const gitIgnorePath = path.join(resolvedDir, ".gitignore");
   const contextFilePath = path.join(resolvedDir, "CONTEXT.md");
 
   p.intro(pc.bgCyan(pc.black(" CodeMCP - Project Init ")));
