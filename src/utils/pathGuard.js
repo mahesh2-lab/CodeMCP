@@ -152,9 +152,9 @@ export function toPosix(p) {
 export function walk(dirAbsolute, dirRelative, results, customRoot = getProjectRoot()) {
   const entries = fs.readdirSync(dirAbsolute, { withFileTypes: true });
   for (const entry of entries) {
-    if (isIgnored(entry.name, customRoot)) continue;
-
     const fullPath = path.join(dirAbsolute, entry.name);
+    if (isIgnored(fullPath, customRoot)) continue;
+
     const relPath = path.join(dirRelative, entry.name);
 
     if (entry.isDirectory()) {
@@ -164,3 +164,22 @@ export function walk(dirAbsolute, dirRelative, results, customRoot = getProjectR
     }
   }
 }
+
+/**
+ * Creates a scoped PathGuard instance bound to a specific project root,
+ * eliminating the need to drill customRoot through every helper call.
+ *
+ * @param {string} [customRoot]
+ */
+export function createScopedPathGuard(customRoot = getProjectRoot()) {
+  const root = path.resolve(customRoot);
+  return {
+    root,
+    resolveSafe: (relPath) => resolveSafe(relPath, root),
+    assertExistsAndAllowed: (absPath) => assertExistsAndAllowed(absPath, root),
+    isIgnored: (targetPath) => isIgnored(targetPath, root),
+    walk: (dirAbs, dirRel, results) => walk(dirAbs, dirRel, results, root),
+    getIgnorePatterns: () => getIgnorePatterns(root),
+  };
+}
+

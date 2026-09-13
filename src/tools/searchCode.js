@@ -1,18 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import {
-  PROJECT_ROOT,
-  walk,
-  resolveSafe,
-  isIgnored,
-} from "../utils/pathGuard.js";
+import { PathGuardError } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
+import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
+
+const BINARY_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar",
+  ".gz", ".exe", ".dll", ".so", ".dylib", ".woff", ".woff2", ".ttf",
+]);
 
 export function registerSearchCodeTool(server, project) {
-  const projectRoot = project?.root || PROJECT_ROOT;
+  const ctx = server?.guard ? server : createToolContext(server, project);
+  const { server: mcpServer, guard } = ctx;
 
-  server.registerTool(
+  mcpServer.registerTool(
     "search_code",
     {
       description:
@@ -23,48 +25,28 @@ export function registerSearchCodeTool(server, project) {
         caseSensitive: z.boolean().optional().describe("Match case sensitively (default: false)"),
         maxResults: z.number().optional().describe("Maximum number of line matches to return (default: 30)"),
       },
-      outputSchema: {
-        query: z.string().describe("Search query or pattern"),
-        totalMatches: z.number().describe("Total number of line matches found"),
-        matchedFilesCount: z.number().describe("Number of distinct files with matches"),
-        matches: z.array(
-          z.object({
-            file: z.string().describe("Relative file path"),
-            line: z.number().describe("1-indexed line number"),
-            content: z.string().describe("Matching line snippet"),
-          })
-        ).describe("Matching lines with line numbers"),
-      },
     },
-    async (args) => {
+    wrapToolHandler("SEARCH", async (args) => {
       const query = args?.query?.trim();
       if (!query) {
-        return { isError: true, content: [{ type: "text", text: "Error: query is required" }] };
+        throw new PathGuardError("Query is required", 400);
       }
 
       const isRegex = Boolean(args?.isRegex);
       const caseSensitive = Boolean(args?.caseSensitive);
       const maxResults = Math.min(Math.max(args?.maxResults || 30, 1), 100);
 
-      let matcher;
+      let matcher = null;
       try {
-        matcher = isRegex
-          ? new RegExp(query, caseSensitive ? "g" : "gi")
-          : null;
+        if (isRegex) {
+          matcher = new RegExp(query, caseSensitive ? "g" : "gi");
+        }
       } catch (err) {
-        logger.warn("SEARCH", query, `Invalid regex: ${err.message}`);
-        return { isError: true, content: [{ type: "text", text: `Invalid regex: ${err.message}` }] };
+        throw new PathGuardError(`Invalid regex: ${err.message}`, 400);
       }
 
-      // Collect eligible project files
       const allFiles = [];
-      walk(projectRoot, "", allFiles, projectRoot);
-
-      // Skip large binary or minified extensions
-      const binaryExts = new Set([
-        ".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar",
-        ".gz", ".exe", ".dll", ".so", ".dylib", ".woff", ".woff2", ".ttf",
-      ]);
+      guard.walk(guard.root, "", allFiles);
 
       const matches = [];
       const matchedFiles = new Set();
@@ -73,11 +55,11 @@ export function registerSearchCodeTool(server, project) {
         if (matches.length >= maxResults) break;
 
         const ext = path.extname(relFile).toLowerCase();
-        if (binaryExts.has(ext)) continue;
+        if (BINARY_EXTENSIONS.has(ext)) continue;
 
         try {
-          const absPath = resolveSafe(relFile, projectRoot);
-          if (isIgnored(absPath, projectRoot)) continue;
+          const absPath = guard.resolveSafe(relFile);
+          if (guard.isIgnored(absPath)) continue;
 
           const content = fs.readFileSync(absPath, "utf8");
           const lines = content.split(/\r?\n/);
@@ -110,22 +92,12 @@ export function registerSearchCodeTool(server, project) {
 
       logger.toolSearch(query, matches.length, matchedFiles.size);
 
-      const data = {
+      return formatToolResponse({
         query,
         totalMatches: matches.length,
         matchedFilesCount: matchedFiles.size,
         matches,
-      };
-
-      return {
-        structuredContent: data,
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(data, null, 2),
-          },
-        ],
-      };
-    }
+      });
+    })
   );
 }

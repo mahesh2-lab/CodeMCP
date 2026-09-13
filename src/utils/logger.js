@@ -39,10 +39,9 @@ export const logger = {
   sessionStart(id, client) {
     const badge = pc.bold(pc.green("CONNECT"));
     const clientName = client?.clientName ? pc.green(client.clientName) : pc.green("AI session");
-    const locationStr = client?.location ? pc.dim(`(${client.location})`) : "";
     const channelStr = client?.channel ? pc.dim(`via ${client.channel}`) : "";
     console.log(
-      `${getTimestamp()} ${pc.cyan("[mcp]")} ${badge} ${clientName} ${locationStr} ${channelStr} ${pc.dim(`[${id.slice(0, 8)}]`)}`
+      `${getTimestamp()} ${pc.cyan("[mcp]")} ${badge} ${clientName} ${channelStr} ${pc.dim(`[${id.slice(0, 8)}]`)}`
     );
   },
 
@@ -143,5 +142,13 @@ export const logger = {
   // Server events
   serverInfo(msg) {
     console.log(`${this.serverPrefix()} ${msg}`);
+  },
+
+  serverWarn(msg) {
+    console.warn(`${this.serverPrefix()} ${pc.yellow(msg)}`);
+  },
+
+  serverError(msg, err) {
+    console.error(`${this.serverPrefix()} ${pc.red(msg)}`, err ? pc.dim(err.message || err) : "");
   },
 };

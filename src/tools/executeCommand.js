@@ -3,9 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { PROJECT_ROOT } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
 import { getEnv } from "../utils/env.js";
+import { createToolContext } from "./context.js";
 
 const RESTRICTED_RULES = [
   // 1. Directory traversal & navigation out of project scope
@@ -199,9 +199,10 @@ export function validateSystemAndCommand(command, projectRoot) {
 }
 
 export function registerExecuteCommandTool(server, project) {
-  const projectRoot = project?.root || PROJECT_ROOT;
+  const ctx = server?.guard ? server : createToolContext(server, project);
+  const { server: mcpServer, projectRoot } = ctx;
 
-  server.registerTool(
+  mcpServer.registerTool(
     "execute_command",
     {
       description:
@@ -212,14 +213,6 @@ export function registerExecuteCommandTool(server, project) {
           .number()
           .optional()
           .describe("Maximum execution time in milliseconds (default: 30000, max: 60000)"),
-      },
-      outputSchema: {
-        command: z.string().describe("Command executed"),
-        exitCode: z.number().describe("Process exit code (0 for success)"),
-        durationMs: z.number().describe("Command run duration in milliseconds"),
-        stdout: z.string().describe("Standard output"),
-        stderr: z.string().describe("Standard error output"),
-        timedOut: z.boolean().describe("Whether the command timed out"),
       },
     },
     async (args) => {

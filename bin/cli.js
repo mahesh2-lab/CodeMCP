@@ -17,7 +17,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
 
-let pkgVersion = "1.0.2";
+let pkgVersion = "1.0.7";
 try {
   const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
   if (pkg.version) pkgVersion = pkg.version;
@@ -49,6 +49,17 @@ async function launchServer(targetPath, options = {}) {
 
   process.env.PROJECT_ROOT = targetDir;
 
+  const configPath = path.join(targetDir, "codemcp.json");
+  if (!fs.existsSync(configPath)) {
+    console.log(pc.yellow(`No codemcp.json found in ${targetDir}. Initializing project...\n`));
+    await initProject(targetDir, options);
+    if (!fs.existsSync(configPath)) {
+      process.exit(0);
+    }
+    console.log();
+  }
+
+
   await import("../src/server.js");
 }
 
@@ -57,13 +68,16 @@ program
   .description("Start the MCP server for a project (default)")
   .option("-p, --port <number>", "Local port to listen on", "4173")
   .option("--no-tunnel", "Disable automatic ngrok tunnel")
+  .option("-y, --yes", "Skip interactive prompts and use detected defaults")
   .action(async (targetPath, options) => {
     await launchServer(targetPath, options);
   });
 
+
 program
   .command("init [path]")
-  .description("Interactive setup to create project.json in the project folder")
+  .description("Interactive setup to create codemcp.json in the project folder")
+
   .option("-y, --yes", "Skip interactive prompts and use detected defaults")
   .action(async (targetPath, options) => {
     try {

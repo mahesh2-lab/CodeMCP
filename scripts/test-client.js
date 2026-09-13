@@ -33,13 +33,23 @@ export async function runTest() {
       throw new Error(`Missing expected tools. Found: ${toolNames.join(", ")}`);
     }
 
-    console.log("\n1. Testing get_project_context...");
+    console.log("\n1. Testing get_project_context (empty object)...");
     const contextResult = await client.callTool({ name: "get_project_context", arguments: {} });
-    console.log(contextResult.content[0].text);
+    console.log(contextResult.content[0].text.slice(0, 150) + "...\n");
 
-    console.log("\n2. Testing list_files...");
+    console.log("1b. Testing get_project_context with undefined arguments (Claude / Cursor client format)...");
+    const contextResultNoArgs = await client.callTool({ name: "get_project_context" });
+    if (contextResultNoArgs.isError) throw new Error("get_project_context failed with undefined args");
+    console.log("get_project_context with undefined args passed successfully.\n");
+
+    console.log("2. Testing list_files (empty object)...");
     const listResult = await client.callTool({ name: "list_files", arguments: {} });
-    console.log(listResult.content[0].text);
+    console.log(listResult.content[0].text.slice(0, 150) + "...\n");
+
+    console.log("2b. Testing list_files with undefined arguments (Claude / Cursor client format)...");
+    const listResultNoArgs = await client.callTool({ name: "list_files" });
+    if (listResultNoArgs.isError) throw new Error("list_files failed with undefined args");
+    console.log("list_files with undefined args passed successfully.\n");
 
     console.log("\n3. Testing read_file ('package.json')...");
     const readResult = await client.callTool({ name: "read_file", arguments: { path: "package.json" } });

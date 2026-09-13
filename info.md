@@ -128,7 +128,7 @@ CodeMCP/
 ├── src/
 │   ├── commands/
 │   │   ├── info.js                # Implementation of `codemcp info`
-│   │   └── init.js                # Interactive clack/prompts setup for project.json
+│   │   └── init.js                # Interactive clack/prompts setup for codemcp.json
 │   ├── middleware/
 │   │   └── auth.js                # Optional Bearer token authorization middleware
 │   ├── routes/
@@ -138,6 +138,7 @@ CodeMCP/
 │   ├── services/
 │   │   └── projects.js            # Project configuration discovery & active context
 │   ├── tools/
+│   │   ├── context.js             # Scoped tool context & unified execution wrapper
 │   │   ├── deleteFile.js          # MCP Tool: delete_file
 │   │   ├── executeCommand.js      # MCP Tool: execute_command (Hardened sandbox)
 │   │   ├── index.js               # Tool registry & permission filtering
@@ -196,7 +197,7 @@ if (!firstArg || (!explicitCommands.has(firstArg) && !helpOrVersion.has(firstArg
 | Command | Arguments | Options | Description |
 |---|---|---|---|
 | `start` | `[path]` | `-p, --port <number>` (default: `4173`)<br>`--no-tunnel` | Starts the MCP HTTP server and optional ngrok tunnel for the specified directory. Defaults to `process.cwd()`. |
-| `init` | `[path]` | `-y, --yes` | Interactive wizard creating `project.json`, `.mcpignore`, and `CONTEXT.md`. `-y` skips prompts using detected defaults. |
+| `init` | `[path]` | `-y, --yes` | Interactive wizard creating `codemcp.json`, `.mcpignore`, and `CONTEXT.md`. `-y` skips prompts using detected defaults. |
 | `info` | `[path]` | *(none)* | Displays project metadata, permissions, active context file, and total indexed source file count in a styled box. |
 | `credentials` / `credentials status` | *(none)* | *(none)* | Displays all encrypted keys stored in `~/.codemcp/credentials.enc` with masked values (e.g. `NGRO...abcd`). |
 | `credentials set` | `<key> <value>` | *(none)* | Encrypts and saves or updates a key-value pair in `~/.codemcp/credentials.enc`. |
@@ -385,15 +386,15 @@ Located in `src/services/projects.js`.
 ### Discovery Order:
 1. **Target Directory**: Derived from CLI argument or `process.env.PROJECT_ROOT` or `process.cwd()`.
 2. **Configuration File Resolution**:
-   - Checks for `project.json` in the project root.
-   - If not found, falls back to `package.json`.
-   - If neither exists, generates an in-memory configuration using the directory name.
+   - Checks for `codemcp.json` in the project root (auto-initializes if missing).
+   - If not found, runs auto-initialization to generate `codemcp.json`.
 3. **Context File Resolution**:
    - Searches for `CONTEXT.md`.
    - Falls back to `README.md` if `CONTEXT.md` is absent.
    - File contents are loaded and injected as the base guidelines for connected AI assistants.
 
-### `project.json` Schema:
+### `codemcp.json` Schema:
+
 ```json
 {
   "id": "codemcp",

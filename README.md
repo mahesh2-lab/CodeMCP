@@ -55,7 +55,7 @@ codemcp --no-tunnel
 
 ### 3. Interactive Project Setup (`codemcp init`)
 
-Set up a `project.json` and a starter `CONTEXT.md` for custom permissions and project notes:
+Set up a `codemcp.json` and a starter `CONTEXT.md` for custom permissions and project notes:
 
 ```bash
 codemcp init
@@ -146,7 +146,7 @@ When started, CodeMCP prints your active connection endpoints and session status
 ========================================================================
   Project    : my-web-app (my-web-app)
   Root       : /home/user/projects/my-web-app
-  Config     : project.json
+  Config     : codemcp.json
   Permission : Read & Write
   Context    : CONTEXT.md
   Local URL  : http://localhost:4173/mcp
@@ -236,11 +236,12 @@ CodeMCP exposes standard MCP tools to the AI assistant based on your configured 
 
 ## Project Configuration
 
-### `project.json` (Optional)
+### `codemcp.json` (Configuration File)
 
-Create a `project.json` file in your project root to customize server settings:
+Create a `codemcp.json` file in your project root to customize server settings (auto-created on first run or via `codemcp init`):
 
 ```json
+
 {
   "id": "my-project",
   "name": "My Web Application",
@@ -338,7 +339,7 @@ Usage: codemcp [command] [options]
 Commands:
   codemcp [path]                  Start MCP server for project (default command)
   codemcp start [path]            Explicitly start MCP server
-  codemcp init [path]             Interactive setup to create project.json and CONTEXT.md
+  codemcp init [path]             Interactive setup to create codemcp.json and CONTEXT.md
   codemcp info [path]             Display project metadata and source file count
   codemcp credentials [cmd]       Manage encrypted credentials in ~/.codemcp/credentials.enc
 

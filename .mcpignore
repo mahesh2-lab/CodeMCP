@@ -1,0 +1,8 @@
+# MCP security ignore file - sensitive files blocked from AI assistants
+.env
+.env.*
+node_modules
+.git
+dist
+build
+.DS_Store

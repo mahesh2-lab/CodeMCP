@@ -17,16 +17,24 @@ build
 
 export async function initProject(targetDir = process.cwd(), options = {}) {
   const resolvedDir = path.resolve(targetDir);
-  const projectJsonPath = path.join(resolvedDir, "project.json");
+  const configJsonPath = path.join(resolvedDir, "codemcp.json");
   const mcpIgnorePath = path.join(resolvedDir, ".mcpignore");
   const gitIgnorePath = path.join(resolvedDir, ".gitignore");
   const contextFilePath = path.join(resolvedDir, "CONTEXT.md");
+  const isSilent = Boolean(options.silent);
 
-  p.intro(pc.bgCyan(pc.black(" CodeMCP - Project Init ")));
+  if (!isSilent) {
+    p.intro(pc.bgCyan(pc.black(" CodeMCP - Project Init ")));
+  }
 
-  if (fs.existsSync(projectJsonPath) && !options.yes) {
+  const existingConfig = fs.existsSync(configJsonPath)
+    ? configJsonPath
+    : null;
+
+  if (existingConfig && !options.yes) {
+    if (isSilent) return;
     const shouldOverwrite = await p.confirm({
-      message: `project.json already exists in ${pc.dim(resolvedDir)}. Overwrite?`,
+      message: `${path.basename(existingConfig)} already exists in ${pc.dim(resolvedDir)}. Overwrite?`,
       initialValue: false,
     });
 
@@ -35,6 +43,8 @@ export async function initProject(targetDir = process.cwd(), options = {}) {
       return;
     }
   }
+
+
 
   // Detect fallback name from directory
   let folderName = path.basename(resolvedDir);
@@ -114,8 +124,11 @@ export async function initProject(targetDir = process.cwd(), options = {}) {
     permission = permRes || "both";
   }
 
-  const s = p.spinner();
-  s.start("Initializing project configuration...");
+  let s = null;
+  if (!isSilent) {
+    s = p.spinner();
+    s.start("Initializing project configuration...");
+  }
 
   // 1. Create .mcpignore if missing
   if (!fs.existsSync(mcpIgnorePath)) {
@@ -153,7 +166,7 @@ ${description}
     }
   }
 
-  // 3. Create project.json
+  // 3. Create codemcp.json
   const sanitizedId = (name || defaultName || "project")
     .toLowerCase()
     .replace(/^@/, "")
@@ -169,20 +182,28 @@ ${description}
     contextFile: "CONTEXT.md",
   };
 
-  fs.writeFileSync(projectJsonPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
-  s.stop(pc.green("Project initialized successfully!"));
+  fs.writeFileSync(configJsonPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
 
-  p.note(
-    [
-      `Config     : ${projectJsonPath}`,
-      `Ignore file: ${mcpIgnorePath}`,
-      `Context    : ${contextFilePath}`,
-      `Permission : ${permission}`,
-    ].join("\n"),
-    pc.cyan("Setup Summary")
-  );
+  if (s) {
 
-  p.outro(
-    `[OK] Ready! Run ${pc.bold(pc.cyan("codemcp"))} in this directory to serve this project to AI assistants.`
-  );
+    s.stop(pc.green("Project initialized successfully!"));
+  }
+
+  if (!isSilent) {
+    p.note(
+      [
+        `Config     : ${configJsonPath}`,
+        `Ignore file: ${mcpIgnorePath}`,
+        `Context    : ${contextFilePath}`,
+        `Permission : ${permission}`,
+      ].join("\n"),
+      pc.cyan("Setup Summary")
+    );
+
+    p.outro(
+      `[OK] Ready! Run ${pc.bold(pc.cyan("codemcp"))} in this directory to serve this project to AI assistants.`
+    );
+  }
+
 }
+

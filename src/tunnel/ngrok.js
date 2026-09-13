@@ -25,12 +25,19 @@ export function openBrowser(url) {
   } catch {}
 }
 
+let cachedApiKey = null;
+
 /**
  * Checks for NGROK_API_KEY. If missing, opens dashboard in browser and prompts user to paste key.
  */
 export async function ensureApiKey() {
+  if (cachedApiKey) return cachedApiKey;
+
   let apiKey = getEnv("NGROK_API_KEY");
-  if (apiKey) return apiKey;
+  if (apiKey) {
+    cachedApiKey = apiKey;
+    return apiKey;
+  }
 
   const url = "https://dashboard.ngrok.com/api-keys";
   console.log(`\nOpening ${pc.cyan(url)} in your browser to create an API key...\n`);
@@ -58,12 +65,14 @@ export async function ensureApiKey() {
   }
 
   if (apiKey) {
+    cachedApiKey = apiKey;
     setEnv("NGROK_API_KEY", apiKey);
     logger.tunnelInfo("Saved NGROK_API_KEY to secure user vault (~/.codemcp/credentials.enc)");
   }
 
   return apiKey;
 }
+
 
 /**
  * Gets the existing authtoken or provisions a new one via the ngrok API.

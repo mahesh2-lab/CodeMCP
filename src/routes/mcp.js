@@ -10,22 +10,17 @@ import { getClientSource } from "../utils/clientInfo.js";
 const router = Router();
 const sessions = new Map();
 
-router.post("/", async (req, res) => {
-  const sessionId = req.headers["mcp-session-id"];
-
-  if (sessionId && sessions.has(sessionId)) {
-    const session = sessions.get(sessionId);
-    logger.setActiveClient(session.client?.clientName);
-    try {
-      return await session.transport.handleRequest(req, res, req.body);
-    } finally {
-      logger.setActiveClient(null);
-    }
+async function executeWithActiveClient(clientName, fn) {
+  logger.setActiveClient(clientName);
+  try {
+    return await fn();
+  } finally {
+    logger.setActiveClient(null);
   }
+}
 
-  const client = await getClientSource(req);
-  const project = getActiveProject();
-  const instructions = [
+function buildServerInstructions(project) {
+  return [
     `Project: ${project?.name || "Unknown"} (${project?.id || "unknown"})`,
     project?.description ? `Description: ${project.description}` : "",
     project?.techStack?.length ? `Tech Stack: ${project.techStack.join(", ")}` : "",
@@ -35,6 +30,48 @@ router.post("/", async (req, res) => {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+export function sanitizeRpcRequest(body) {
+  if (!body) return body;
+  if (Array.isArray(body)) {
+    return body.map(sanitizeRpcRequest);
+  }
+  if (body.method === "tools/call" && body.params) {
+    if (
+      body.params.arguments === undefined ||
+      body.params.arguments === null ||
+      typeof body.params.arguments !== "object" ||
+      Array.isArray(body.params.arguments)
+    ) {
+      body.params.arguments = {};
+    }
+  }
+  return body;
+}
+
+router.use((req, res, next) => {
+  if (req.body) {
+    sanitizeRpcRequest(req.body);
+  }
+  next();
+});
+
+function isInitMessage(body) {
+  if (!body) return false;
+  if (Array.isArray(body)) return body.some((m) => m?.method === "initialize");
+  return body.method === "initialize";
+}
+
+async function getOrCreateSession(sessionId, req, isInit = false) {
+  if (sessionId && sessions.has(sessionId)) {
+    return sessions.get(sessionId);
+  }
+
+  const effectiveId = sessionId || randomUUID();
+  const client = await getClientSource(req);
+  const project = getActiveProject();
+  const instructions = buildServerInstructions(project);
 
   const server = new McpServer(
     {
@@ -46,69 +83,92 @@ router.post("/", async (req, res) => {
 
   registerTools(server, project);
 
+  let sessionData;
   const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
+    sessionIdGenerator: () => effectiveId,
     onsessioninitialized: (newId) => {
-      sessions.set(newId, { server, transport, project, client });
+      sessions.set(newId, sessionData);
       logger.sessionStart(newId, client);
     },
   });
 
+  // If this session is adopting a client's existing session ID after a server restart,
+  // mark it as initialized so that subsequent tool calls/SSE reconnects execute seamlessly
+  if (!isInit && transport._webStandardTransport) {
+    transport._webStandardTransport._initialized = true;
+    transport._webStandardTransport.sessionId = effectiveId;
+  }
+
   transport.onclose = () => {
-    for (const [id, item] of sessions.entries()) {
-      if (item.transport === transport) {
-        logger.sessionEnd(id, item.client);
-        return sessions.delete(id);
-      }
-    }
+    logger.sessionEnd(effectiveId, client);
+    sessions.delete(effectiveId);
   };
 
+  await server.connect(transport);
+  sessionData = { server, transport, project, client };
+  sessions.set(effectiveId, sessionData);
+
+  if (!isInit) {
+    logger.sessionStart(effectiveId, client);
+  }
+
+  return sessionData;
+}
+
+router.post("/", async (req, res) => {
+  const sessionId = req.headers["mcp-session-id"];
+  const isInit = isInitMessage(req.body);
+
   try {
-    await server.connect(transport);
-    logger.setActiveClient(client.clientName);
-    await transport.handleRequest(req, res, req.body);
+    const session = await getOrCreateSession(sessionId, req, isInit);
+    return await executeWithActiveClient(session.client?.clientName, () =>
+      session.transport.handleRequest(req, res, req.body)
+    );
   } catch (err) {
-    logger.error("Request processing error", err);
-    if (!res.headersSent)
+    logger.error("Session request failed", err);
+    if (!res.headersSent) {
       res.status(500).json({ error: "Failed to process request" });
-  } finally {
-    logger.setActiveClient(null);
+    }
   }
 });
 
 const handleExistingSession = async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
-  const session = sessionId && sessions.get(sessionId);
-  if (!session) {
-    if (req.method === "GET") {
-      const project = getActiveProject();
-      const client = await getClientSource(req);
-      return res.status(200).json({
-        status: "online",
-        project: project.name,
-        endpoint: "/mcp",
-        transport: "StreamableHTTP",
-        detectedClient: {
-          client: client.clientName,
-          type: client.clientType,
-          ip: client.clientIp,
-          location: client.location,
-          channel: client.channel,
-          origin: client.origin || "(none)",
-          userAgent: client.userAgent || "(none)",
-        },
-        message:
-          "MCP server is ready. Send POST with JSON-RPC initialize payload to start session.",
-      });
-    }
-    return res.status(400).json({ error: "Unknown or missing Mcp-Session-Id" });
+  const isSse = req.headers.accept?.includes("text/event-stream");
+
+  // If a human is viewing the endpoint in a browser (no session ID and not SSE)
+  if (req.method === "GET" && !sessionId && !isSse) {
+    const project = getActiveProject();
+    const client = await getClientSource(req);
+    return res.status(200).json({
+      status: "online",
+      project: project.name,
+      endpoint: "/mcp",
+      transport: "StreamableHTTP",
+      detectedClient: {
+        client: client.clientName,
+        type: client.clientType,
+        ip: client.clientIp,
+        location: client.location,
+        channel: client.channel,
+        origin: client.origin || "(none)",
+        userAgent: client.userAgent || "(none)",
+      },
+      message:
+        "MCP server is ready. Send POST with JSON-RPC initialize payload to start session.",
+    });
   }
 
-  logger.setActiveClient(session.client?.clientName);
   try {
-    return await session.transport.handleRequest(req, res);
-  } finally {
-    logger.setActiveClient(null);
+    const session = await getOrCreateSession(sessionId, req, false);
+    return await executeWithActiveClient(session.client?.clientName, () =>
+      session.transport.handleRequest(req, res)
+    );
+  } catch (err) {
+    logger.error("Existing session request failed", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to process request" });
+    }
   }
 };
 

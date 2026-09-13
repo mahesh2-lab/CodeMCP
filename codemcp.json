@@ -1,0 +1,7 @@
+{
+  "id": "mahesh2-lab-codemcp",
+  "name": "@mahesh2-lab/codemcp",
+  "description": "Project-scoped MCP server providing context, file access, and execution tools for AI assistants and MCP clients",
+  "permission": "both",
+  "contextFile": "CONTEXT.md"
+}

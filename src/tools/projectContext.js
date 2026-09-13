@@ -1,39 +1,26 @@
-import { z } from "zod";
 import { logger } from "../utils/logger.js";
+import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
 
 export function registerProjectContextTool(server, project) {
-  server.registerTool(
+  const ctx = server?.guard ? server : createToolContext(server, project);
+  const { server: mcpServer, project: proj } = ctx;
+
+  mcpServer.registerTool(
     "get_project_context",
     {
       description: "Returns metadata, description, tech stack, and contextual guidelines for this project.",
-      inputSchema: {},
-      outputSchema: {
-        id: z.string().describe("Project identifier"),
-        name: z.string().describe("Project display name"),
-        description: z.string().describe("Project description"),
-        techStack: z.array(z.string()).describe("List of technologies used in the project"),
-        context: z.string().describe("Contextual guidelines, coding rules, and architecture instructions"),
-      },
     },
-    async () => {
-      logger.toolContext(project?.contextFile);
+    wrapToolHandler("CONTEXT", async () => {
+      logger.toolContext(proj?.contextFile);
       const data = {
-        id: project.id,
-        name: project.name,
-        description: project.description || "",
-        techStack: project.techStack || [],
-        context: project.context || "",
+        id: proj?.id || "project",
+        name: proj?.name || "Project",
+        description: proj?.description || "",
+        techStack: proj?.techStack || [],
+        context: proj?.context || "",
       };
 
-      return {
-        structuredContent: data,
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(data, null, 2),
-          },
-        ],
-      };
-    }
+      return formatToolResponse(data);
+    })
   );
 }

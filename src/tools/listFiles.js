@@ -1,17 +1,13 @@
 import { z } from "zod";
-import {
-  resolveSafe,
-  assertExistsAndAllowed,
-  walk,
-  PathGuardError,
-  PROJECT_ROOT,
-} from "../utils/pathGuard.js";
+import { PathGuardError } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
+import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
 
 export function registerListFilesTool(server, project) {
-  const projectRoot = project?.root || PROJECT_ROOT;
+  const ctx = server?.guard ? server : createToolContext(server, project);
+  const { server: mcpServer, guard } = ctx;
 
-  server.registerTool(
+  mcpServer.registerTool(
     "list_files",
     {
       description:
@@ -22,55 +18,29 @@ export function registerListFilesTool(server, project) {
           .optional()
           .describe("Subfolder relative to the project root. Omit or pass '.' to list all."),
       },
-      outputSchema: {
-        count: z.number().describe("Total number of files listed"),
-        path: z.string().describe("Directory path searched"),
-        files: z.array(z.string()).describe("List of file paths relative to project root"),
-      },
     },
-    async (args) => {
-      try {
-        const subPath = args?.path || ".";
-        const absoluteStart = resolveSafe(subPath, projectRoot);
-        const stat = assertExistsAndAllowed(absoluteStart, projectRoot);
+    wrapToolHandler("LIST", async (args) => {
+      const subPath = args?.path || ".";
+      const absoluteStart = guard.resolveSafe(subPath);
+      const stat = guard.assertExistsAndAllowed(absoluteStart);
 
-        if (!stat.isDirectory()) {
-          throw new PathGuardError("Path is not a directory", 400);
-        }
-
-        const files = [];
-        walk(absoluteStart, subPath === "." ? "" : subPath.replace(/\\/g, "/"), files, projectRoot);
-
-        logger.toolList(subPath, files.length);
-
-        const sortedFiles = files.sort();
-        const data = {
-          count: sortedFiles.length,
-          path: subPath,
-          files: sortedFiles,
-        };
-
-        return {
-          structuredContent: data,
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(data, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        const target = (args?.path || ".").replace(/\\/g, "/");
-        if (err.statusCode === 403 || err.message?.includes("blocked") || err.message?.includes("escapes")) {
-          logger.blocked("LIST", target, err.message);
-        } else {
-          logger.warn("LIST", target, err.message);
-        }
-        return {
-          isError: true,
-          content: [{ type: "text", text: `Error: ${err.message}` }],
-        };
+      if (!stat.isDirectory()) {
+        throw new PathGuardError("Path is not a directory", 400);
       }
-    }
+
+      const files = [];
+      guard.walk(absoluteStart, subPath === "." ? "" : subPath.replace(/\\/g, "/"), files);
+
+      logger.toolList(subPath, files.length);
+
+      const sortedFiles = files.sort();
+      const data = {
+        count: sortedFiles.length,
+        path: subPath,
+        files: sortedFiles,
+      };
+
+      return formatToolResponse(data);
+    })
   );
 }

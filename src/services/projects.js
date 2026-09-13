@@ -13,7 +13,9 @@ export function loadContextFromFile(projectRoot, contextFilename = "CONTEXT.md")
   if (fs.existsSync(contextPath)) {
     try {
       return fs.readFileSync(contextPath, "utf8").trim();
-    } catch {}
+    } catch {
+      console.warn(`[projects] Warning: Failed to read context file ${contextPath}`);
+    }
   }
   return "";
 }
@@ -30,8 +32,12 @@ export function findProjectConfig(targetDir) {
     ? "README.md"
     : "CONTEXT.md";
 
-  const manifestPath = path.join(projectRoot, "project.json");
-  if (fs.existsSync(manifestPath)) {
+  const codemcpPath = path.join(projectRoot, "codemcp.json");
+  const manifestPath = fs.existsSync(codemcpPath)
+    ? codemcpPath
+    : null;
+
+  if (manifestPath) {
     try {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
       const contextFile = manifest.contextFile || defaultContextFile;
@@ -66,7 +72,7 @@ export function findProjectConfig(targetDir) {
         contextFile: defaultContextFile,
         context: fallbackContext,
         root: projectRoot,
-        configFile: pkgPath,
+        configFile: null,
       };
     } catch {}
   }
@@ -81,6 +87,7 @@ export function findProjectConfig(targetDir) {
     root: projectRoot,
     configFile: null,
   };
+
 }
 
 export function getActiveProject() {
@@ -89,3 +96,20 @@ export function getActiveProject() {
   }
   return activeProject;
 }
+
+export function setActiveProject(project) {
+  activeProject = project;
+}
+
+export function resetActiveProject() {
+  activeProject = null;
+}
+
+export function getProjectByKey(key) {
+  const configuredKey = getEnv("API_KEY");
+  if (configuredKey && key === configuredKey) {
+    return getActiveProject();
+  }
+  return null;
+}
+

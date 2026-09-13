@@ -1,10 +1,12 @@
 import express from "express";
 import cors from "cors";
+import fs from "node:fs";
 import path from "node:path";
 import pc from "picocolors";
 import routes from "./routes/index.js";
 import { startTunnel, stopTunnel } from "./tunnel/ngrok.js";
-import { getActiveProject } from "./services/projects.js";
+import { getActiveProject, resetActiveProject } from "./services/projects.js";
+import { initProject } from "./commands/init.js";
 import { logger } from "./utils/logger.js";
 import { getEnv } from "./utils/env.js";
 import { findAvailablePort } from "./utils/ports.js";
@@ -15,8 +17,15 @@ export const app = express();
 app.use(
   cors({
     origin: "*",
-    exposedHeaders: ["Mcp-Session-Id"],
-    allowedHeaders: ["Content-Type", "mcp-session-id", "Authorization"],
+    exposedHeaders: ["Mcp-Session-Id", "Mcp-Protocol-Version"],
+    allowedHeaders: [
+      "Content-Type",
+      "mcp-session-id",
+      "mcp-protocol-version",
+      "last-event-id",
+      "ngrok-skip-browser-warning",
+      "Authorization",
+    ],
   })
 );
 
@@ -33,6 +42,16 @@ if (PORT !== requestedPort) {
 let tunnelListener = null;
 
 export const httpServer = app.listen(PORT, async () => {
+  const projectRoot = path.resolve(getEnv("PROJECT_ROOT", "."));
+  const configPath = path.join(projectRoot, "codemcp.json");
+
+  if (!fs.existsSync(configPath)) {
+    await initProject(projectRoot, { yes: true, silent: true });
+    resetActiveProject();
+  }
+
+
+
   const project = getActiveProject();
   tunnelListener = await startTunnel(PORT);
 
