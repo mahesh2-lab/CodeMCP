@@ -52,7 +52,8 @@ export async function ensureApiKey() {
 
     if (p.isCancel(inputKey) || !inputKey?.trim()) {
       p.cancel("Setup cancelled. Missing NGROK_API_KEY.");
-      return null;
+      console.log(pc.dim("  Tip: To run locally without a public tunnel, use: ") + pc.cyan("codemcp --no-tunnel\n"));
+      process.exit(0);
     }
 
     apiKey = inputKey.trim();
@@ -61,6 +62,11 @@ export async function ensureApiKey() {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const input = await rl.question("Paste your ngrok API Key here: ");
     rl.close();
+    if (!input?.trim()) {
+      console.log(pc.yellow("Setup cancelled. Missing NGROK_API_KEY."));
+      console.log(pc.dim("  Tip: To run locally without a public tunnel, use: ") + pc.cyan("codemcp --no-tunnel\n"));
+      process.exit(0);
+    }
     apiKey = input?.trim();
   }
 
