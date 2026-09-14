@@ -1,7 +1,7 @@
 # CodeMCP — Complete Technical Specification & System Architecture Manual
 
 > **Package**: `@mahesh2-lab/codemcp`  
-> **Current Version**: `1.0.7`  
+> **Current Version**: `1.1.2`  
 > **License**: MIT  
 > **Module System**: ECMAScript Modules (`"type": "module"`)  
 > **Runtime Requirement**: Node.js `>=18.0.0`  
@@ -29,6 +29,10 @@
     - [10.5 write_file](#105-write_file)
     - [10.6 delete_file](#106-delete_file)
     - [10.7 execute_command & Security Sandbox](#107-execute_command--security-sandbox)
+    - [10.8 record_memory](#108-record_memory)
+    - [10.9 get_memory](#109-get_memory)
+    - [10.10 Cross-Assistant Session Memory Architecture](#1010-cross-assistant-session-memory-architecture)
+    - [10.11 Native OS Desktop Notifications Subsystem](#1011-native-os-desktop-notifications-subsystem)
 11. [Client Identification & Request Telemetry](#11-client-identification--request-telemetry)
 12. [Structured Logging & Terminal UI Rendering](#12-structured-logging--terminal-ui-rendering)
 13. [Build, Bundling & Obfuscation Pipeline](#13-build-bundling--obfuscation-pipeline)
@@ -136,6 +140,8 @@ CodeMCP/
 │   │   ├── index.js               # Root Express router aggregator
 │   │   └── mcp.js                 # POST, GET, DELETE /mcp StreamableHTTP endpoint
 │   ├── services/
+│   │   ├── approval.js            # Interactive terminal review, line diff preview & approval
+│   │   ├── memory.js              # Cross-assistant session memory store & activity journal
 │   │   └── projects.js            # Project configuration discovery & active context
 │   ├── tools/
 │   │   ├── context.js             # Scoped tool context & unified execution wrapper
@@ -143,6 +149,7 @@ CodeMCP/
 │   │   ├── executeCommand.js      # MCP Tool: execute_command (Hardened sandbox)
 │   │   ├── index.js               # Tool registry & permission filtering
 │   │   ├── listFiles.js           # MCP Tool: list_files
+│   │   ├── manageMemory.js        # MCP Tools: record_memory, get_memory
 │   │   ├── projectContext.js      # MCP Tool: get_project_context
 │   │   ├── readFile.js            # MCP Tool: read_file
 │   │   ├── searchCode.js          # MCP Tool: search_code
@@ -150,18 +157,19 @@ CodeMCP/
 │   ├── tunnel/
 │   │   └── ngrok.js               # @ngrok/ngrok forwarder, API provisioning, domains
 │   ├── utils/
-│   │   ├── box.js                 # Terminal UI box drawing with ANSI stripping
+│   │   ├── box.js                 # Terminal UI box drawing with ANSI stripping & approval box
 │   │   ├── clientInfo.js          # Client IP, User-Agent, Origin, and channel detector
 │   │   ├── credentials.js         # Machine-fingerprint AES-256-GCM credential vault
+│   │   ├── diff.js                # LCS line-diff algorithm, context radius & box formatter
 │   │   ├── env.js                 # Env resolver (Process Env -> Vault -> Fallback)
-│   │   ├── logger.js              # Colorized, aligned multi-action terminal logger
+│   │   ├── help.js                # Terminal help styling and command reference
+│   │   ├── logger.js              # Aligned column logger with AsyncLocalStorage request IDs
+│   │   ├── notify.js              # Native OS desktop Toast notification engine
 │   │   ├── pathGuard.js           # Sandbox path resolution & ignore matching
 │   │   └── ports.js               # Dynamic TCP port availability prober
 │   └── server.js                  # Main server initialization & Express bootstrap
-├── test-project/                  # Default fallback testing workspace
-├── package.json                   # NPM manifest (v1.0.7, dependencies, scripts)
+├── package.json                   # NPM manifest (v1.1.2, dependencies, scripts)
 ├── README.md                      # Public-facing user documentation
-├── test-client.js                 # Root wrapper for running scripts/test-client.js
 └── info.md                        # Exhaustive architectural specification (this file)
 ```
 
@@ -178,9 +186,9 @@ Configured in `package.json` under the `"bin"` field:
 - `devnet-mcp` (Legacy alias)
 
 ### Implicit Default Command Dispatch
-If invoked with no arguments, or if the first argument is a path (not matching an explicit command name like `start`, `init`, `info`, `credentials`, `help`), `bin/cli.js` automatically injects the `"start"` command into `process.argv`:
+If invoked with no arguments, or if the first argument is a path (not matching an explicit command name like `start`, `init`, `info`, `approval`, `credentials`, `help`), `bin/cli.js` automatically injects the `"start"` command into `process.argv`:
 ```javascript
-const explicitCommands = new Set(["start", "init", "info", "credentials", "help"]);
+const explicitCommands = new Set(["start", "init", "info", "credentials", "approval", "approve", "help"]);
 const helpOrVersion = new Set(["--help", "-h", "--version", "-v", "help"]);
 const firstArg = process.argv[2];
 
@@ -196,9 +204,10 @@ if (!firstArg || (!explicitCommands.has(firstArg) && !helpOrVersion.has(firstArg
 
 | Command | Arguments | Options | Description |
 |---|---|---|---|
-| `start` | `[path]` | `-p, --port <number>` (default: `4173`)<br>`--no-tunnel` | Starts the MCP HTTP server and optional ngrok tunnel for the specified directory. Defaults to `process.cwd()`. |
+| `start` | `[path]` | `-p, --port <number>` (default: `4173`)<br>`-a, --approval [mode]`<br>`-c, --confirm`<br>`--ask`<br>`--no-approval`<br>`--no-confirm`<br>`--no-tunnel`<br>`--no-notify`<br>`-y, --yes` | Starts the MCP HTTP server and optional ngrok tunnel for the specified directory. Defaults to `process.cwd()`. |
 | `init` | `[path]` | `-y, --yes` | Interactive wizard creating `codemcp.json`, `.mcpignore`, and `CONTEXT.md`. `-y` skips prompts using detected defaults. |
 | `info` | `[path]` | *(none)* | Displays project metadata, permissions, active context file, and total indexed source file count in a styled box. |
+| `approval` / `approve` | `[on\|off]` | *(none)* | Views or toggles interactive change approval in `codemcp.json` (`approval on` sets `true`, `approval off` sets `false`). |
 | `credentials` / `credentials status` | *(none)* | *(none)* | Displays all encrypted keys stored in `~/.codemcp/credentials.enc` with masked values (e.g. `NGRO...abcd`). |
 | `credentials set` | `<key> <value>` | *(none)* | Encrypts and saves or updates a key-value pair in `~/.codemcp/credentials.enc`. |
 | `credentials delete` | `<key>` | *(none)* | Deletes a stored key from the encrypted vault. |
@@ -559,6 +568,93 @@ Child processes run with a sanitized environment. All variables matching `/(API_
 
 ---
 
+### 10.8 `record_memory`
+- **File**: `src/tools/manageMemory.js`
+- **Description**: Records cross-assistant memory, architectural decisions, and next steps for other AI models working in this project.
+- **Input Schema**:
+  - `summary`: `z.string()` — Concise overview of work completed or current state.
+  - `decisions`: `z.string().optional()` — Key architectural or technical decisions adopted.
+  - `nextSteps`: `z.string().optional()` — Pending tasks or recommendations for succeeding assistants.
+- **Output Schema**:
+  - `success`: `z.boolean()`
+  - `message`: `z.string()`
+  - `memory`: `z.object()`
+- **Persistence**: Saved directly to `.codemcp/memory.json` in the project root with atomic write operations.
+
+---
+
+### 10.9 `get_memory`
+- **File**: `src/tools/manageMemory.js`
+- **Description**: Retrieves cross-assistant session memory, previous handoffs, decisions, and recent file activity history.
+- **Input Schema**: *(none)*
+- **Output Schema**:
+  - `projectId`: `z.string()`
+  - `projectName`: `z.string()`
+  - `lastHandoff`: `z.object().nullable()`
+  - `recentActions`: `z.array(z.object())`
+- **Utility**: Allows an agent to quickly discover context left behind by previous sessions without re-indexing all source files.
+
+---
+
+### 10.10 Cross-Assistant Session Memory Architecture
+Located in `src/services/memory.js`.
+
+CodeMCP acts as a universal context bridge across disparate AI assistants (e.g. Claude Desktop, Cursor IDE, Windsurf, ChatGPT). 
+
+#### Memory Data Model (`.codemcp/memory.json`):
+```json
+{
+  "version": 1,
+  "projectId": "my-app",
+  "projectName": "My Application",
+  "projectRoot": "/Users/you/projects/my-app",
+  "lastHandoff": {
+    "summary": "Implemented approval prompt box with diff preview",
+    "decisions": "Used AsyncLocalStorage for request ID tracking across async calls",
+    "nextSteps": "Verify terminal raw mode keypress compatibility",
+    "client": "Claude Desktop",
+    "updatedAt": "2026-09-14T09:45:00.000Z"
+  },
+  "recentActions": [
+    {
+      "timestamp": "2026-09-14T09:40:12.000Z",
+      "action": "WRITE",
+      "target": "src/utils/logger.js",
+      "client": "Claude Desktop",
+      "details": "Updated 6059 bytes",
+      "summary": "Added aligned column logging with req_XXXX IDs"
+    }
+  ]
+}
+```
+
+#### Features:
+1. **Automatic Prompt Injection**: During MCP connection initialization, recent memory is automatically formatted and appended to the MCP server's system instructions under `--- Cross-Assistant Session Memory ---`.
+2. **Rolling Activity Journal**: Automatically captures every `WRITE`, `DELETE`, and `EXEC` action up to a rolling window of 15 actions.
+3. **Project Isolation**: Guarantees that workspaces each maintain isolated memory stores keyed by normalized path.
+
+---
+
+### 10.11 Native OS Desktop Notifications Subsystem
+Located in `src/utils/notify.js`.
+
+Provides instant desktop awareness for human developers during autonomous agent execution.
+
+#### Platform Adapters:
+- **Windows (10/11)**: Native WinRT XML Toast notifications invoked via PowerShell (`[Windows.UI.Notifications.ToastNotificationManager]`). Custom sender name `"CodeMCP"` and icon embedding (`icon.png`).
+- **macOS**: Native Notification Center banners via `osascript` AppleScript (`display notification with title ...`).
+- **Linux**: Freedesktop desktop notifications via `notify-send`.
+
+#### Triggers:
+- **Approval Required**: Alerted when an AI change is paused awaiting terminal confirmation.
+- **File Modifications**: Alerted when files are written or updated.
+- **File Deletions**: Alerted when files are deleted.
+- **Security Blocks**: Alerted when path traversal or forbidden commands are intercepted.
+
+*(Can be disabled globally with the `--no-notify` CLI flag or by setting `NOTIFY=false`)*.
+
+---
+
 ## 11. Client Identification & Request Telemetry
 
 Located in `src/utils/clientInfo.js`.
@@ -578,28 +674,63 @@ During incoming HTTP requests, CodeMCP performs automatic client detection:
 
 ## 12. Structured Logging & Terminal UI Rendering
 
-Located in `src/utils/logger.js` and `src/utils/box.js`.
+Located in `src/utils/logger.js`, `src/utils/diff.js`, `src/services/approval.js`, and `src/utils/box.js`.
 
 ### Aligned Action Column Layout
-Every tool execution outputs a uniform, colorized log line formatted as:
-`HH:MM:SS [mcp] [ClientName] ACTION target · metadata`
+Every tool execution outputs a uniform, column-aligned log line:
+`HH:MM:SS req_XXXX <ICON> <ACTION>   <TARGET> · <DETAILS>`
 
 | Badge | Color | Action | Example Output |
 |---|---|---|---|
-| `CONNECT` | Green | Session opened | `11:30:00 [mcp] CONNECT Claude Desktop (localhost) via local network [a83f9102]` |
-| `DISCONN` | Dim | Session closed | `11:35:12 [mcp] DISCONN Claude Desktop closed [a83f9102]` |
-| `CONTEXT` | White | Context read | `11:30:01 [mcp] CONTEXT Guidelines loaded from CONTEXT.md` |
-| `LIST` | Blue | List files | `11:30:02 [mcp] LIST    src · 12 files` |
-| `READ` | Green | Read file | `11:30:03 [mcp] READ    src/server.js · 2.8 KB` |
-| `SEARCH` | Cyan | Code search | `11:30:04 [mcp] SEARCH  "listen" · 2 matches in 1 file` |
-| `WRITE` | Yellow | Write file | `11:30:05 [mcp] WRITE   src/utils/temp.js · 120 B written` |
-| `DELETE` | Red | Delete file | `11:30:06 [mcp] DELETE  src/utils/temp.js · deleted` |
-| `EXEC` | Magenta | Shell command | `11:30:07 [mcp] EXEC    npm test · exit 0 (1420ms)` |
-| `BLOCKED` | Red | Security reject | `11:30:08 [mcp] BLOCKED EXEC   cat .env · Sensitive file access prohibited` |
-| `WARN` | Yellow | Warning | `11:30:09 [mcp] WARN    READ   missing.txt · File not found` |
+| `✓ CONNECT` | Green | Session opened | `15:05:31        ✓ CONNECT  Claude-User (ngrok tunnel)` |
+| `→ READ` | Cyan | Read file | `15:05:32 req_0557 → READ     index.html · 4.0 KB` |
+| `→ LIST` | Cyan | List files | `15:05:33 req_0558 → LIST     src · 12 files` |
+| `→ SEARCH` | Cyan | Code search | `15:05:34 req_0559 → SEARCH   "port" · 3 matches in 1 file` |
+| `⚠ WRITE` | Yellow | Write pending review | `15:09:21 req_8043 ⚠ WRITE    index.html` |
+| `✓ WRITE` | Green | Write complete | `15:09:43 req_8043 ✓ WRITE    index.html · 7.2 KB written` |
+| `⚠ DELETE` | Yellow | Delete pending review | `15:09:50 req_8044 ⚠ DELETE   temp.txt` |
+| `✓ DELETE` | Red | File deleted | `15:09:55 req_8044 ✓ DELETE   temp.txt · deleted` |
+| `✓ EXEC` | Green | Shell command exit 0 | `15:10:05 req_8045 ✓ EXEC     npm test · exit 0 (140ms)` |
+| `✖ BLOCKED` | Red | Security reject | `15:10:06 req_8046 ✖ BLOCKED  cat .env · Sensitive file access prohibited` |
+| `✖ REJECT` | Red | User rejected in CLI | `15:10:07 req_8047 ✖ REJECT   index.html · rejected by user` |
+| `⚠ WARN` | Yellow | Tool warning | `15:10:08 req_8048 ⚠ WARN     missing.txt · File not found` |
+| `- DISCONN` | Dim | Session closed | `15:15:12        - DISCONN  Claude-User closed` |
 
-### Terminal Box Formatting (`src/utils/box.js`)
-Uses `stripAnsi` to calculate true visual lengths of strings with terminal styling codes, ensuring borders and alignment do not warp when colorful titles or URLs are displayed.
+### Request Tracing with AsyncLocalStorage
+- CodeMCP tracks every tool call with an isolated, asynchronous request ID (`req_XXXX`) generated via `logger.generateRequestId()`.
+- The request ID is preserved throughout asynchronous file reads, diff computations, and interactive terminal review pauses.
+
+### Change Approval Box (`src/utils/box.js` & `src/services/approval.js`)
+When approval mode is enabled, proposed changes pause the tool call and render an enclosed, color-coded line diff:
+
+```text
+ ┌─ ⚠ AI CHANGE APPROVAL REQUIRED ────────────────────────────────────┐
+ │ WRITE FILE                                                          │
+ │ index.html                                                          │
+ │ Modified · +12 -2 lines                                             │
+ │                                                                     │
+ │  ...                                                                │
+ │    </head>                                                          │
+ │    <body>                                                           │
+ │  - <header class="container"><nav><a class="logo" href="#">Code...  │
+ │  + <header class="container"><nav><a class="logo" href="#">Code...  │
+ │    <main>                                                           │
+ │  ... 19 more lines                                                  │
+ └─────────────────────────────────────────────────────────────────────┘
+
+• Claude-User · Read & Write · Approval ON · Requests 4
+────────────────────────────────────────────────────
+Apply changes? [y] Accept  [n] Reject  [d] Full diff  [q] Quit: y
+
+✓ Change accepted
+  index.html · 7.2 KB written
+```
+
+#### Diff Algorithm (`src/utils/diff.js`):
+- Longest Common Subsequence (LCS) dynamic programming matrix.
+- Context radius of 2 lines around changes.
+- Automatic line-length truncation with `...` to prevent terminal line wrapping inside borders.
+- Full diff expansion mode (`d`) for viewing complete uncompressed file context.
 
 ---
 
@@ -678,6 +809,10 @@ npm test
 | `API_KEY` | String | `""` | Optional Bearer token required by `auth.js` middleware if enabled. | **Yes** (Vaulted) |
 | `ALLOWED_EXTENSIONS` | String | `""` (All) | Comma-delimited list of permitted file extensions (e.g. `.js,.ts,.json`). | No |
 | `IGNORED_DIRS` | String | `""` | Additional comma-delimited directories to ignore during indexing. | No |
+| `APPROVAL_MODE` | String | `""` | Require confirmation before applying changes (`"true"`, `"false"`, `"destructive"`). | No |
+| `CONFIRM_CHANGES` | String | `""` | Alias for `APPROVAL_MODE`. | No |
+| `NOTIFY` | Boolean string | `"true"` | Set to `"false"` to suppress native OS desktop Toast notifications. | No |
+| `APPROVAL_TIMEOUT_MS` | Number | `900000` (15 min) | Milliseconds before an unconfirmed approval prompt times out and rejects. | No |
 | `MCP_URL` | String | `http://localhost:4173/mcp` | Target endpoint used by test runner (`scripts/test-client.js`). | No |
 
 ---
