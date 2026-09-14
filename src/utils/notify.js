@@ -17,9 +17,13 @@ function getDefaultIconPath() {
   try {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     const candidates = [
-      path.resolve(currentDir, "../../icon.png"), // from src/utils/
-      path.resolve(currentDir, "../icon.png"),    // from dist/ or src/
+      path.resolve(currentDir, "../../assets/icon.png"), // from src/utils/
+      path.resolve(currentDir, "../assets/icon.png"),    // from dist/ or src/
+      path.resolve(currentDir, "./assets/icon.png"),
+      path.resolve(currentDir, "../../icon.png"),
+      path.resolve(currentDir, "../icon.png"),
       path.resolve(currentDir, "./icon.png"),
+      path.resolve(process.cwd(), "assets/icon.png"),
       path.resolve(process.cwd(), "icon.png"),
     ];
 
@@ -29,6 +33,10 @@ function getDefaultIconPath() {
       }
     }
   } catch {
+    const cwdAssetsIcon = path.resolve(process.cwd(), "assets/icon.png");
+    if (fs.existsSync(cwdAssetsIcon)) {
+      return cwdAssetsIcon;
+    }
     const cwdIcon = path.resolve(process.cwd(), "icon.png");
     if (fs.existsSync(cwdIcon)) {
       return cwdIcon;

@@ -11,8 +11,7 @@
   },
   "files": [
     "dist",
-    "icon.png",
-    "banner.png",
+    "assets",
     "README.md",
     "LICENSE"
   ],

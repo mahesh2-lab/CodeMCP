@@ -51,16 +51,27 @@ async function build() {
   }
   fs.mkdirSync(distDir, { recursive: true });
 
-  const rootIcon = path.join(rootDir, "icon.png");
-  if (fs.existsSync(rootIcon)) {
-    fs.copyFileSync(rootIcon, path.join(distDir, "icon.png"));
-    console.log("🖼 Copied icon.png to dist/icon.png");
+  // Copy assets
+  const assetsDir = path.join(rootDir, "assets");
+  const distAssetsDir = path.join(distDir, "assets");
+  fs.mkdirSync(distAssetsDir, { recursive: true });
+
+  const iconSrc = fs.existsSync(path.join(assetsDir, "icon.png"))
+    ? path.join(assetsDir, "icon.png")
+    : path.join(rootDir, "icon.png");
+  if (fs.existsSync(iconSrc)) {
+    fs.copyFileSync(iconSrc, path.join(distAssetsDir, "icon.png"));
+    fs.copyFileSync(iconSrc, path.join(distDir, "icon.png"));
+    console.log("🖼 Copied icon.png to dist/assets/icon.png & dist/icon.png");
   }
 
-  const rootBanner = path.join(rootDir, "banner.png");
-  if (fs.existsSync(rootBanner)) {
-    fs.copyFileSync(rootBanner, path.join(distDir, "banner.png"));
-    console.log("🖼 Copied banner.png to dist/banner.png");
+  const bannerSrc = fs.existsSync(path.join(assetsDir, "banner.png"))
+    ? path.join(assetsDir, "banner.png")
+    : path.join(rootDir, "banner.png");
+  if (fs.existsSync(bannerSrc)) {
+    fs.copyFileSync(bannerSrc, path.join(distAssetsDir, "banner.png"));
+    fs.copyFileSync(bannerSrc, path.join(distDir, "banner.png"));
+    console.log("🖼 Copied banner.png to dist/assets/banner.png & dist/banner.png");
   }
 
   console.log(`📦 Building CodeMCP v${pkgVersion} with esbuild...`);

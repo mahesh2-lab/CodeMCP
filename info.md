@@ -641,7 +641,7 @@ Located in `src/utils/notify.js`.
 Provides instant desktop awareness for human developers during autonomous agent execution.
 
 #### Platform Adapters:
-- **Windows (10/11)**: Native WinRT XML Toast notifications invoked via PowerShell (`[Windows.UI.Notifications.ToastNotificationManager]`). Custom sender name `"CodeMCP"` and icon embedding (`icon.png`).
+- **Windows (10/11)**: Native WinRT XML Toast notifications invoked via PowerShell (`[Windows.UI.Notifications.ToastNotificationManager]`). Custom sender name `"CodeMCP"` and icon embedding (`assets/icon.png`).
 - **macOS**: Native Notification Center banners via `osascript` AppleScript (`display notification with title ...`).
 - **Linux**: Freedesktop desktop notifications via `notify-send`.
 
