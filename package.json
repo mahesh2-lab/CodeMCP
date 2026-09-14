@@ -44,6 +44,7 @@
     "@clack/prompts": "^1.8.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@ngrok/ngrok": "^1.7.0",
+    "@vscode/ripgrep": "^1.18.0",
     "commander": "^15.0.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",

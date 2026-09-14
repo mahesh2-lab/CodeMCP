@@ -5,122 +5,47 @@ import path from "node:path";
 import { z } from "zod";
 import { logger } from "../utils/logger.js";
 import { getEnv } from "../utils/env.js";
-import { createToolContext } from "./context.js";
+import { PathGuardError } from "../utils/pathGuard.js";
+import { createToolContext, wrapToolHandler } from "./context.js";
 
+/**
+ * Standard security blacklist rules preventing destructive operations,
+ * directory traversal, credential leakage, and privilege escalation.
+ */
 const RESTRICTED_RULES = [
-  // 1. Directory traversal & navigation out of project scope
-  {
-    pattern: /(^|[\s"'`\/\\=])\.\.([\/\\]|[\s"'`=]|$)/,
-    reason: "Directory traversal (..) outside project scope prohibited",
-  },
-  {
-    pattern: /\b(cd|chdir|pushd)\s+([a-zA-Z]:[/\\]?|[/~\\\$%]|(\.\.))/i,
-    reason: "Changing directory outside project folder prohibited",
-  },
-  {
-    pattern: /(^|[\s"'`=])(~[\/\\]|\$HOME\b|%USERPROFILE%|%APPDATA%|%LOCALAPPDATA%|%WINDIR%|%SYSTEMROOT%)/i,
-    reason: "Accessing user/system path outside project directory prohibited",
-  },
-  {
-    pattern: /(^|[\s"'`=])\/(etc|var|usr|bin|sbin|root|home|opt|boot|dev|sys|proc)\b/i,
-    reason: "System directory access prohibited",
-  },
-
-  // 2. Sensitive file and credentials access
-  {
-    pattern: /(^|[\s"'`\/\\=])\.env(\.[a-zA-Z0-9_.-]+)?(\b|[\s"'`\/\\=]|$)/i,
-    reason: "Sensitive file access prohibited (.env)",
-  },
-  {
-    pattern: /\b(id_rsa|id_ecdsa|id_ed25519|\.codemcp|credentials\.enc|\.aws[\/\\]credentials|\.ssh[\/\\]|\/etc\/shadow|\/etc\/passwd)\b/i,
-    reason: "Credentials and sensitive key access prohibited",
-  },
-  {
-    pattern: /(^|[\s"'`\/\\=])\.git[\/\\](config|credentials|HEAD|hooks|objects)/i,
-    reason: "Internal git repository configuration access prohibited",
-  },
-
-  // 3. Destructive deletion commands
-  {
-    pattern: /\b(rmdir|rd)\s+.*\/s/i,
-    reason: "Recursive directory deletion prohibited",
-  },
-  {
-    pattern: /\bdel\s+.*\/f\s+\/s/i,
-    reason: "Forceful recursive file deletion prohibited",
-  },
-  {
-    pattern: /\b(del|erase)\s+.*(\*|\/s|\/f)/i,
-    reason: "Broad or recursive file deletion prohibited",
-  },
-  {
-    pattern: /\b(del|rmdir|rd)\s+.*[a-zA-Z]:\\/i,
-    reason: "Drive root deletion prohibited",
-  },
-  {
-    pattern: /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f*|-f*r)\s+([\/~*.]|(\.\.))/i,
-    reason: "Broad recursive deletion prohibited",
-  },
-
-  // 4. Disk & low-level operations
-  {
-    pattern: /\b(format|diskpart|bcdedit|chkdsk|fdisk|mkfs|parted)\b/i,
-    reason: "Drive formatting and disk partitioning prohibited",
-  },
-  {
-    pattern: /\b(mkfs|dd\s+if=)\b/i,
-    reason: "Low-level disk modification prohibited",
-  },
-
-  // 5. System power & lifecycle
-  {
-    pattern: /\b(shutdown|restart-computer|stop-computer|reboot|halt|poweroff|init\s+[06])\b/i,
-    reason: "System power command prohibited",
-  },
-
-  // 6. Registry, accounts, and privilege escalation
-  {
-    pattern: /\b(reg\s+(add|delete|import|restore)|regedit)\b/i,
-    reason: "Registry modification prohibited",
-  },
-  {
-    pattern: /\b(net\s+user|net\s+localgroup|useradd|usermod|userdel|groupadd)\b/i,
-    reason: "User account modification prohibited",
-  },
-  {
-    pattern: /\b(sudo|runas|doas|pbrun|su\s+-|su\s+[a-zA-Z0-9_-]+)\b/i,
-    reason: "Privilege escalation / superuser execution prohibited",
-  },
-  {
-    pattern: /\b(sc\s+(create|delete|config|start|stop)|systemctl\s+(stop|disable|restart|mask)|service\s+\w+\s+(stop|restart))\b/i,
-    reason: "System service manipulation prohibited",
-  },
-
-  // 7. Remote execution, reverse shells & execution policy bypass
-  {
-    pattern: /\b(curl|wget)\b.*\|\s*(sh|bash|zsh|cmd|powershell|pwsh)\b/i,
-    reason: "Piping remote script into shell execution prohibited",
-  },
-  {
-    pattern: /\b(Invoke-WebRequest|iwr|curl)\b.*\|\s*(iex|Invoke-Expression)\b/i,
-    reason: "Remote script execution prohibited",
-  },
-  {
-    pattern: /\bpowershell.*(-enc|-encodedcommand|-executionpolicy\s+bypass|-ep\s+bypass)\b/i,
-    reason: "PowerShell execution policy bypass or encoded execution prohibited",
-  },
-  {
-    pattern: /\b(nc|ncat|netcat)\s+.*-e\b/i,
-    reason: "Network shell binding prohibited",
-  },
-
-  // 8. Fork bomb
-  {
-    pattern: /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/,
-    reason: "Fork bomb prohibited",
-  },
+  { pattern: /(^|[\s"'`\/\\=])\.\.([\/\\]|[\s"'`=]|$)/, reason: "Directory traversal (..) outside project scope prohibited", },
+  { pattern: /\b(cd|chdir|pushd)\s+([a-zA-Z]:[/\\]?|[/~\\\$%]|(\.\.))/i, reason: "Changing directory outside project folder prohibited", },
+  { pattern: /(^|[\s"'`=])(~[\/\\]|\$HOME\b|%USERPROFILE%|%APPDATA%|%LOCALAPPDATA%|%WINDIR%|%SYSTEMROOT%)/i, reason: "Accessing user/system path outside project directory prohibited", },
+  { pattern: /(^|[\s"'`=])\/(etc|var|usr|bin|sbin|root|home|opt|boot|dev|sys|proc)\b/i, reason: "System directory access prohibited", },
+  { pattern: /(^|[\s"'`\/\\=])\.env(\.[a-zA-Z0-9_.-]+)?(\b|[\s"'`\/\\=]|$)/i, reason: "Sensitive file access prohibited (.env)", },
+  { pattern: /\b(id_rsa|id_ecdsa|id_ed25519|\.codemcp|credentials\.enc|\.aws[\/\\]credentials|\.ssh[\/\\]|\/etc\/shadow|\/etc\/passwd)\b/i, reason: "Credentials and sensitive key access prohibited", },
+  { pattern: /(^|[\s"'`\/\\=])\.git[\/\\](config|credentials|HEAD|hooks|objects)/i, reason: "Internal git repository configuration access prohibited", },
+  { pattern: /\b(rmdir|rd)\s+.*\/s/i, reason: "Recursive directory deletion prohibited", },
+  { pattern: /\bdel\s+.*\/f\s+\/s/i, reason: "Forceful recursive file deletion prohibited", },
+  { pattern: /\b(del|erase)\s+.*(\*|\/s|\/f)/i, reason: "Broad or recursive file deletion prohibited", },
+  { pattern: /\b(del|rmdir|rd)\s+.*[a-zA-Z]:\\/i, reason: "Drive root deletion prohibited", },
+  { pattern: /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f*|-f*r)\s+([\/~*.]|(\.\.))/i, reason: "Broad recursive deletion prohibited", },
+  { pattern: /\b(format|diskpart|bcdedit|chkdsk|fdisk|mkfs|parted)\b/i, reason: "Drive formatting and disk partitioning prohibited", },
+  { pattern: /\b(mkfs|dd\s+if=)\b/i, reason: "Low-level disk modification prohibited", },
+  { pattern: /\b(shutdown|restart-computer|stop-computer|reboot|halt|poweroff|init\s+[06])\b/i, reason: "System power command prohibited", },
+  { pattern: /\b(reg\s+(add|delete|import|restore)|regedit)\b/i, reason: "Registry modification prohibited", },
+  { pattern: /\b(net\s+user|net\s+localgroup|useradd|usermod|userdel|groupadd)\b/i, reason: "User account modification prohibited", },
+  { pattern: /\b(sudo|runas|doas|pbrun|su\s+-|su\s+[a-zA-Z0-9_-]+)\b/i, reason: "Privilege escalation / superuser execution prohibited", },
+  { pattern: /\b(sc\s+(create|delete|config|start|stop)|systemctl\s+(stop|disable|restart|mask)|service\s+\w+\s+(stop|restart))\b/i, reason: "System service manipulation prohibited", },
+  { pattern: /\b(curl|wget)\b.*\|\s*(sh|bash|zsh|cmd|powershell|pwsh)\b/i, reason: "Piping remote script into shell execution prohibited", },
+  { pattern: /\b(Invoke-WebRequest|iwr|curl)\b.*\|\s*(iex|Invoke-Expression)\b/i, reason: "Remote script execution prohibited", },
+  { pattern: /\bpowershell.*(-enc|-encodedcommand|-executionpolicy\s+bypass|-ep\s+bypass)\b/i, reason: "PowerShell execution policy bypass or encoded execution prohibited", },
+  { pattern: /\b(nc|ncat|netcat)\s+.*-e\b/i, reason: "Network shell binding prohibited", },
+  { pattern: /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, reason: "Fork bomb prohibited", },
 ];
 
+/**
+ * Validates command against project boundary policies, security rules, and system capabilities.
+ *
+ * @param {string} command - Shell command to validate
+ * @param {string} projectRoot - Absolute path to project root
+ * @returns {{ ok: boolean, shell?: string, systemInfo?: object, resolvedRoot?: string, error?: string, reason?: string }}
+ */
 export function validateSystemAndCommand(command, projectRoot) {
   const isWindows = process.platform === "win32";
 
@@ -177,7 +102,9 @@ export function validateSystemAndCommand(command, projectRoot) {
           error: `Command references path outside project folder (${rawTarget})`,
         };
       }
-    } catch {}
+    } catch {
+      // Ignore unresolvable path tokens
+    }
   }
 
   // 4. Detect system shell
@@ -198,8 +125,16 @@ export function validateSystemAndCommand(command, projectRoot) {
   return { ok: true, shell, systemInfo, resolvedRoot };
 }
 
-export function registerExecuteCommandTool(server, project) {
-  const ctx = server?.guard ? server : createToolContext(server, project);
+/**
+ * Registers the `execute_command` tool with the MCP server.
+ * Runs terminal/build/test commands within the scoped project root, applying pre-flight
+ * security checks, environment variable sanitization, and execution timeouts.
+ *
+ * @param {import("@modelcontextprotocol/sdk/server/mcp.js").McpServer | import("./context.js").ToolContext} serverOrCtx - The MCP server instance or shared tool context
+ * @param {object} [project] - The scoped project definition (if server instance provided directly)
+ */
+export function registerExecuteCommandTool(serverOrCtx, project) {
+  const ctx = serverOrCtx?.guard ? serverOrCtx : createToolContext(serverOrCtx, project);
   const { server: mcpServer, projectRoot } = ctx;
 
   mcpServer.registerTool(
@@ -215,17 +150,16 @@ export function registerExecuteCommandTool(server, project) {
           .describe("Maximum execution time in milliseconds (default: 30000, max: 60000)"),
       },
     },
-    async (args) => {
+    wrapToolHandler("EXEC", async (args) => {
       const rawCmd = args?.command?.trim();
       if (!rawCmd) {
-        return { isError: true, content: [{ type: "text", text: "Error: command is required" }] };
+        throw new PathGuardError("command is required", 400);
       }
 
-      // Pre-flight system check
+      // Pre-flight system and security check
       const check = validateSystemAndCommand(rawCmd, projectRoot);
       if (!check.ok) {
-        logger.blocked("EXEC", rawCmd, check.reason || "Security violation");
-        return { isError: true, content: [{ type: "text", text: `Blocked: ${check.error}` }] };
+        throw new PathGuardError(check.error, 403);
       }
 
       const cwd = check.resolvedRoot || path.resolve(projectRoot);
@@ -234,27 +168,38 @@ export function registerExecuteCommandTool(server, project) {
 
       return new Promise((resolve) => {
         const execEnv = { ...process.env, PROJECT_ROOT: cwd };
-        // Strip sensitive credentials and tokens to prevent leakage
-        const sensitivePattern = /(API_KEY|AUTHTOKEN|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_KEY)/i;
+
+        // Strip sensitive credentials, cloud keys, and access tokens to prevent leakage
+        const sensitivePattern = /(API_KEY|AUTH|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_KEY|GITHUB|AWS|NPM|CODEMCP)/i;
         for (const key of Object.keys(execEnv)) {
           if (sensitivePattern.test(key)) {
             delete execEnv[key];
           }
         }
 
-        exec(
+        const child = exec(
           rawCmd,
           {
             cwd,
             timeout,
-            maxBuffer: 500 * 1024, // 500 KB limit
+            maxBuffer: 500 * 1024, // 500 KB stdout/stderr buffer
+            windowsHide: true,
             env: execEnv,
           },
           (err, stdout, stderr) => {
             const duration = Date.now() - startTime;
-            const code = err ? (typeof err.code === "number" ? err.code : 1) : 0;
+            const isTimedOut = Boolean(err && (err.killed || err.signal === "SIGTERM" || err.code === "ETIMEDOUT"));
 
-            if (err && err.killed) {
+            // On Windows, ensure orphaned child processes of cmd.exe are cleaned up
+            if (isTimedOut && process.platform === "win32" && child.pid) {
+              try {
+                exec(`taskkill /pid ${child.pid} /t /f`, { windowsHide: true });
+              } catch {
+                // Ignore kill errors for already-dead process
+              }
+            }
+
+            if (isTimedOut) {
               logger.warn("EXEC", rawCmd, `Timed out after ${timeout}ms`);
               return resolve({
                 isError: true,
@@ -275,6 +220,12 @@ export function registerExecuteCommandTool(server, project) {
               });
             }
 
+            let normalizedStderr = stderr || "";
+            if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+              normalizedStderr += "\n[Error: Command output exceeded maximum buffer limit (500 KB)]";
+            }
+
+            const code = err ? (typeof err.code === "number" ? err.code : 1) : 0;
             logger.toolExec(rawCmd, code, duration);
 
             const responseText = [
@@ -283,7 +234,7 @@ export function registerExecuteCommandTool(server, project) {
               `Duration  : ${duration}ms`,
               `Platform  : ${check.systemInfo.platform} (${check.systemInfo.arch})`,
               stdout ? `\n--- Output (stdout) ---\n${stdout.trim()}` : "",
-              stderr ? `\n--- Error Output (stderr) ---\n${stderr.trim()}` : "",
+              normalizedStderr ? `\n--- Error Output (stderr) ---\n${normalizedStderr.trim()}` : "",
             ]
               .filter(Boolean)
               .join("\n");
@@ -295,7 +246,7 @@ export function registerExecuteCommandTool(server, project) {
                 exitCode: code,
                 durationMs: duration,
                 stdout: stdout || "",
-                stderr: stderr || "",
+                stderr: normalizedStderr,
                 timedOut: false,
               },
               content: [{ type: "text", text: responseText }],
@@ -303,6 +254,6 @@ export function registerExecuteCommandTool(server, project) {
           }
         );
       });
-    }
+    })
   );
 }

@@ -3,7 +3,7 @@ import pc from "picocolors";
 function getTimestamp() {
   const now = new Date();
   return pc.dim(
-    now.toTimeString().split(" ")[0] // HH:MM:SS
+    now.toTimeString().split(" ")[0], // HH:MM:SS
   );
 }
 
@@ -38,37 +38,45 @@ export const logger = {
   // Session lifecycle
   sessionStart(id, client) {
     const badge = pc.bold(pc.green("CONNECT"));
-    const clientName = client?.clientName ? pc.green(client.clientName) : pc.green("AI session");
+    const clientName = client?.clientName
+      ? pc.green(client.clientName)
+      : pc.green("AI session");
     const channelStr = client?.channel ? pc.dim(`via ${client.channel}`) : "";
     console.log(
-      `${getTimestamp()} ${pc.cyan("[mcp]")} ${badge} ${clientName} ${channelStr} ${pc.dim(`[${id.slice(0, 8)}]`)}`
+      `${getTimestamp()} ${pc.cyan("[mcp]")} ${badge} ${clientName} ${channelStr} ${pc.dim(`[${id.slice(0, 8)}]`)}`,
     );
   },
 
   sessionEnd(id, client) {
     const badge = pc.bold(pc.dim("DISCONN"));
-    const clientName = client?.clientName ? pc.dim(client.clientName) : pc.dim("Session");
+    const clientName = client?.clientName
+      ? pc.dim(client.clientName)
+      : pc.dim("Session");
     console.log(
-      `${getTimestamp()} ${pc.cyan("[mcp]")} ${badge} ${clientName} closed ${pc.dim(`[${id.slice(0, 8)}]`)}`
+      `${getTimestamp()} ${pc.cyan("[mcp]")} ${badge} ${clientName} closed ${pc.dim(`[${id.slice(0, 8)}]`)}`,
     );
   },
 
   // Tool executions (Clean, aligned columns)
   toolContext(contextFile) {
     const action = pc.bold(pc.white("CONTEXT"));
-    console.log(`${this.mcpPrefix()} ${action} ${pc.dim("Guidelines loaded from")} ${pc.white(contextFile || "manifest")}`);
+    console.log(
+      `${this.mcpPrefix()} ${action} ${pc.dim("Guidelines loaded from")} ${pc.white(contextFile || "manifest")}`,
+    );
   },
 
   toolList(dir, count) {
     const action = pc.bold(pc.blue("LIST   "));
     const pathStr = dir === "." ? "." : dir;
-    console.log(`${this.mcpPrefix()} ${action} ${pc.white(pathStr)} ${pc.dim("·")} ${pc.cyan(`${count} files`)}`);
+    console.log(
+      `${this.mcpPrefix()} ${action} ${pc.white(pathStr)} ${pc.dim("·")} ${pc.cyan(`${count} files`)}`,
+    );
   },
 
   toolRead(relPath, byteSize) {
     const action = pc.bold(pc.green("READ   "));
     console.log(
-      `${this.mcpPrefix()} ${action} ${pc.white(relPath)} ${pc.dim("·")} ${pc.dim(formatBytes(byteSize))}`
+      `${this.mcpPrefix()} ${action} ${pc.white(relPath)} ${pc.dim("·")} ${pc.dim(formatBytes(byteSize))}`,
     );
   },
 
@@ -77,30 +85,30 @@ export const logger = {
     const matchStr = `${matchCount} ${matchCount === 1 ? "match" : "matches"}`;
     const fileStr = `${fileCount} ${fileCount === 1 ? "file" : "files"}`;
     console.log(
-      `${this.mcpPrefix()} ${action} "${pc.white(query)}" ${pc.dim("·")} ${pc.green(matchStr)} in ${fileStr}`
+      `${this.mcpPrefix()} ${action} "${pc.white(query)}" ${pc.dim("·")} ${pc.green(matchStr)} in ${fileStr}`,
     );
   },
 
   toolWrite(relPath, byteSize) {
     const action = pc.bold(pc.yellow("WRITE  "));
     console.log(
-      `${this.mcpPrefix()} ${action} ${pc.white(relPath)} ${pc.dim("·")} ${pc.yellow(`${formatBytes(byteSize)} written`)}`
+      `${this.mcpPrefix()} ${action} ${pc.white(relPath)} ${pc.dim("·")} ${pc.yellow(`${formatBytes(byteSize)} written`)}`,
     );
   },
 
   toolDelete(relPath) {
     const action = pc.bold(pc.red("DELETE "));
-    console.log(`${this.mcpPrefix()} ${action} ${pc.white(relPath)} ${pc.dim("·")} ${pc.red("deleted")}`);
+    console.log(
+      `${this.mcpPrefix()} ${action} ${pc.white(relPath)} ${pc.dim("·")} ${pc.red("deleted")}`,
+    );
   },
 
   toolExec(cmd, exitCode, durationMs) {
     const action = pc.bold(pc.magenta("EXEC   "));
     const statusStr =
-      exitCode === 0
-        ? pc.green(`exit 0`)
-        : pc.red(`exit ${exitCode}`);
+      exitCode === 0 ? pc.green(`exit 0`) : pc.red(`exit ${exitCode}`);
     console.log(
-      `${this.mcpPrefix()} ${action} ${pc.white(cmd)} ${pc.dim("·")} ${statusStr} ${pc.dim(`(${durationMs}ms)`)}`
+      `${this.mcpPrefix()} ${action} ${pc.white(cmd)} ${pc.dim("·")} ${statusStr} ${pc.dim(`(${durationMs}ms)`)}`,
     );
   },
 
@@ -109,7 +117,7 @@ export const logger = {
     const badge = pc.bold(pc.red("BLOCKED"));
     const action = pc.bold(actionName.toUpperCase().padEnd(6));
     console.warn(
-      `${this.mcpPrefix()} ${badge} ${action} ${pc.white(target)} ${pc.dim("·")} ${pc.yellow(reason)}`
+      `${this.mcpPrefix()} ${badge} ${action} ${pc.white(target)} ${pc.dim("·")} ${pc.yellow(reason)}`,
     );
   },
 
@@ -118,7 +126,7 @@ export const logger = {
     const badge = pc.bold(pc.red("REJECT "));
     const action = pc.bold(actionName.toUpperCase().padEnd(6));
     console.warn(
-      `${this.mcpPrefix()} ${badge} ${action} ${pc.white(target)} ${pc.dim("·")} ${pc.yellow(reason)}`
+      `${this.mcpPrefix()} ${badge} ${action} ${pc.white(target)} ${pc.dim("·")} ${pc.yellow(reason)}`,
     );
   },
 
@@ -127,12 +135,15 @@ export const logger = {
     const badge = pc.bold(pc.yellow("WARN   "));
     const action = pc.bold(actionName.toUpperCase().padEnd(6));
     console.warn(
-      `${this.mcpPrefix()} ${badge} ${action} ${pc.white(target)} ${pc.dim("·")} ${message}`
+      `${this.mcpPrefix()} ${badge} ${action} ${pc.white(target)} ${pc.dim("·")} ${message}`,
     );
   },
 
   error(msg, err) {
-    console.error(`${this.mcpPrefix()} ${pc.red(msg)}`, err ? pc.dim(err.message || err) : "");
+    console.error(
+      `${this.mcpPrefix()} ${pc.red(msg)}`,
+      err ? pc.dim(err.message || err) : "",
+    );
   },
 
   // Tunnel events
@@ -145,7 +156,10 @@ export const logger = {
   },
 
   tunnelError(msg, err) {
-    console.error(`${this.tunnelPrefix()} ${pc.red(msg)}`, err ? pc.dim(err.message || err) : "");
+    console.error(
+      `${this.tunnelPrefix()} ${pc.red(msg)}`,
+      err ? pc.dim(err.message || err) : "",
+    );
   },
 
   // Server events
@@ -158,6 +172,9 @@ export const logger = {
   },
 
   serverError(msg, err) {
-    console.error(`${this.serverPrefix()} ${pc.red(msg)}`, err ? pc.dim(err.message || err) : "");
+    console.error(
+      `${this.serverPrefix()} ${pc.red(msg)}`,
+      err ? pc.dim(err.message || err) : "",
+    );
   },
 };
