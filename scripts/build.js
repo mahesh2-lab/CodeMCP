@@ -10,6 +10,7 @@ const distDir = path.join(rootDir, "dist");
 
 // Read package.json to get dependencies that should be kept external
 const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf-8"));
+const pkgVersion = pkg.version || "1.1.2";
 const externalDeps = [
   ...Object.keys(pkg.dependencies || {}),
   ...Object.keys(pkg.peerDependencies || {}),
@@ -50,7 +51,13 @@ async function build() {
   }
   fs.mkdirSync(distDir, { recursive: true });
 
-  console.log("📦 Bundling with esbuild...");
+  const rootIcon = path.join(rootDir, "icon.png");
+  if (fs.existsSync(rootIcon)) {
+    fs.copyFileSync(rootIcon, path.join(distDir, "icon.png"));
+    console.log("🖼 Copied icon.png to dist/icon.png");
+  }
+
+  console.log(`📦 Building CodeMCP v${pkgVersion} with esbuild...`);
 
   // 1. Build server.js -> dist/server.js
   await esbuild.build({

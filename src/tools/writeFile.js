@@ -1,10 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { PathGuardError } from "../utils/pathGuard.js";
+import { PathGuardError, toPosix } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
-import { isApprovalRequired, requestApproval } from "../services/approval.js";
+import { verifyActionApproval, isApprovalRequired } from "../services/approval.js";
+import { recordAction } from "../services/memory.js";
 import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
+
 
 /**
  * Registers the `write_file` tool with the MCP server.
@@ -26,6 +28,10 @@ export function registerWriteFileTool(serverOrCtx, project) {
       inputSchema: {
         path: z.string().describe("File path relative to the project root, e.g. src/index.js"),
         content: z.string().describe("The complete text content to write into the file"),
+        summary: z
+          .string()
+          .optional()
+          .describe("Optional brief description of what was added or updated in this file"),
       },
     },
     wrapToolHandler("WRITE", async (args) => {
@@ -41,40 +47,41 @@ export function registerWriteFileTool(serverOrCtx, project) {
         throw new PathGuardError("Writing to this file is blocked (ignored or sensitive)", 403);
       }
 
-      const normalized = cleanRelPath.replace(/\\/g, "/");
+      const normalized = toPosix(cleanRelPath);
       const content = args?.content !== undefined && args?.content !== null ? String(args.content) : "";
 
+      // Check if file already exists before writing
+      let isNew = true;
+      try {
+        await fs.access(absolutePath);
+        isNew = false;
+      } catch {}
+
       // Interactive approval check if configured
+      let oldContent = "";
+      try {
+        oldContent = await fs.readFile(absolutePath, "utf8");
+      } catch (err) {
+        if (err.code !== "ENOENT") {
+          logger.warn("WRITE", normalized, `Could not read existing content: ${err.message}`);
+        }
+      }
+
       if (isApprovalRequired(ctx.project, "WRITE")) {
-        let oldContent = "";
-        try {
-          oldContent = await fs.readFile(absolutePath, "utf8");
-        } catch (err) {
-          if (err.code !== "ENOENT") {
-            logger.warn("WRITE", normalized, `Could not read existing content: ${err.message}`);
-          }
-        }
+        logger.toolWritePending(normalized);
+      }
 
-        const approval = await requestApproval({
-          type: "WRITE",
-          path: normalized,
-          oldContent,
-          newContent: content,
-        });
+      const approvalResult = await verifyActionApproval({
+        project: ctx.project,
+        actionType: "WRITE",
+        path: normalized,
+        oldContent,
+        newContent: content,
+        logger,
+      });
 
-        if (!approval.approved) {
-          const reason = approval.reason || "User rejected this file modification.";
-          logger.rejected("WRITE", normalized, reason);
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: `Changes rejected by user: ${reason}`,
-              },
-            ],
-          };
-        }
+      if (!approvalResult.approved) {
+        return approvalResult.rejectionResponse;
       }
 
       const dir = path.dirname(absolutePath);
@@ -82,15 +89,30 @@ export function registerWriteFileTool(serverOrCtx, project) {
       await fs.writeFile(absolutePath, content, "utf8");
 
       const bytesWritten = Buffer.byteLength(content, "utf8");
-      const message = `Successfully wrote ${bytesWritten} bytes to ${normalized}`;
+      const lineCount = content.split(/\r?\n/).length;
+      const details = `${isNew ? "Created" : "Updated"} ${bytesWritten} bytes (${lineCount} lines)`;
+      const aiSummary = args?.summary?.trim();
+      const finalSummary = aiSummary || `${isNew ? "Created" : "Updated"} ${path.basename(normalized)}`;
+      const preview = content.replace(/\s+/g, " ").trim().slice(0, 100);
+      const message = `Successfully wrote ${bytesWritten} bytes to ${normalized}${aiSummary ? ` (${aiSummary})` : ""}`;
 
       logger.toolWrite(normalized, bytesWritten);
+      recordAction(ctx.project || ctx.projectRoot, {
+        action: "WRITE",
+        target: normalized,
+        client: logger.getActiveClient(),
+        details,
+        summary: finalSummary,
+        preview,
+      }).catch(() => {});
 
       return formatToolResponse(
         {
           success: true,
           path: normalized,
           bytesWritten,
+          summary: finalSummary,
+          details,
           message,
         },
         message

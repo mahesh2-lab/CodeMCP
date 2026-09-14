@@ -143,8 +143,6 @@ export async function createReservedDomain(options = {}) {
   return null;
 }
 
-export const createDomain = createReservedDomain;
-
 /**
  * Gets the configured domain, fetches the first reserved domain on the account,
  * or provisions a new one if not found.
@@ -216,5 +214,4 @@ export async function stopTunnel(listener) {
   }
 }
 
-export const exposePort = startTunnel;
 export default startTunnel;

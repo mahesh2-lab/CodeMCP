@@ -128,6 +128,29 @@ export async function runTest() {
       console.log("Dangerous command correctly blocked.\n");
     }
 
+    if (toolNames.includes("record_memory") && toolNames.includes("get_memory")) {
+      console.log("11. Testing record_memory & get_memory...");
+      const saveRes = await client.callTool({
+        name: "record_memory",
+        arguments: {
+          summary: "Cross-assistant memory verified via test client",
+          decisions: "Standard JSON file-based storage in .codemcp/memory.json",
+          nextSteps: "Ready for multi-assistant deployment",
+        },
+      });
+      if (saveRes.isError) throw new Error("record_memory failed");
+      console.log(saveRes.content[0].text + "\n");
+
+      const getRes = await client.callTool({
+        name: "get_memory",
+        arguments: {},
+      });
+      if (getRes.isError || !getRes.content[0].text.includes("Cross-assistant memory verified")) {
+        throw new Error("get_memory verification failed");
+      }
+      console.log("Memory handoff and retrieval verified.\n");
+    }
+
     console.log("All project-scoped MCP checks passed successfully.");
   } catch (err) {
     console.error("Test failed:", err);

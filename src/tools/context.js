@@ -1,4 +1,4 @@
-import { createScopedPathGuard, PROJECT_ROOT } from "../utils/pathGuard.js";
+import { createScopedPathGuard, getProjectRoot, toPosix } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
 
 /**
@@ -25,7 +25,7 @@ import { logger } from "../utils/logger.js";
  * @returns {ToolContext} The initialized tool context
  */
 export function createToolContext(server, project) {
-  const projectRoot = project?.root || PROJECT_ROOT;
+  const projectRoot = project?.root || getProjectRoot();
   const guard = createScopedPathGuard(projectRoot);
 
   return {
@@ -46,50 +46,53 @@ export function createToolContext(server, project) {
  */
 export function wrapToolHandler(action, handlerFn) {
   return async (args) => {
-    try {
-      const safeArgs = args && typeof args === "object" && !Array.isArray(args) ? args : {};
-      const result = await handlerFn(safeArgs);
-      return result;
-    } catch (err) {
-      const rawTarget = args?.path || args?.command || args?.query || ".";
-      const target = String(rawTarget).replace(/\\/g, "/");
+    const reqId = logger.generateRequestId();
+    return logger.runWithRequestId(reqId, async () => {
+      try {
+        const safeArgs = args && typeof args === "object" && !Array.isArray(args) ? args : {};
+        const result = await handlerFn(safeArgs);
+        return result;
+      } catch (err) {
+        const rawTarget = args?.path || args?.command || args?.query || ".";
+        const target = toPosix(String(rawTarget));
 
-      const message = err?.message || String(err) || "Unknown error occurred";
-      const statusCode = err?.statusCode || (err?.status ? Number(err.status) : undefined);
+        const message = err?.message || String(err) || "Unknown error occurred";
+        const statusCode = err?.statusCode || (err?.status ? Number(err.status) : undefined);
 
-      const isBlocked =
-        statusCode === 403 ||
-        /blocked|escapes|prohibited|unauthorized|forbidden/i.test(message);
+        const isBlocked =
+          statusCode === 403 ||
+          /blocked|escapes|prohibited|unauthorized|forbidden/i.test(message);
 
-      if (isBlocked) {
-        logger.blocked(action, target, message);
-      } else {
-        logger.warn(action, target, message);
+        if (isBlocked) {
+          logger.blocked(action, target, message);
+        } else {
+          logger.warn(action, target, message);
+        }
+
+        // Build consistent text message adhering to both security policies and test assertions
+        let responseText;
+        if (isBlocked) {
+          responseText = message.toLowerCase().startsWith("blocked")
+            ? message.replace(/^blocked:\s*/i, "Blocked: ")
+            : `Blocked: ${message}`;
+        } else if (message.startsWith("Error:")) {
+          responseText = message;
+        } else {
+          responseText = `Error: ${message}`;
+        }
+
+        const errorResponse = {
+          isError: true,
+          content: [{ type: "text", text: responseText }],
+        };
+
+        if (err?.structuredContent && typeof err.structuredContent === "object") {
+          errorResponse.structuredContent = err.structuredContent;
+        }
+
+        return errorResponse;
       }
-
-      // Build consistent text message adhering to both security policies and test assertions
-      let responseText;
-      if (isBlocked) {
-        responseText = message.toLowerCase().startsWith("blocked")
-          ? message.replace(/^blocked:\s*/i, "Blocked: ")
-          : `Blocked: ${message}`;
-      } else if (message.startsWith("Error:")) {
-        responseText = message;
-      } else {
-        responseText = `Error: ${message}`;
-      }
-
-      const errorResponse = {
-        isError: true,
-        content: [{ type: "text", text: responseText }],
-      };
-
-      if (err?.structuredContent && typeof err.structuredContent === "object") {
-        errorResponse.structuredContent = err.structuredContent;
-      }
-
-      return errorResponse;
-    }
+    });
   };
 }
 

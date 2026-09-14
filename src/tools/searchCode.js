@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { rgPath } from "@vscode/ripgrep";
 import { z } from "zod";
-import { PathGuardError } from "../utils/pathGuard.js";
+import { PathGuardError, BINARY_EXTENSIONS, toPosix } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
 import {
   createToolContext,
@@ -22,41 +22,6 @@ const MAX_QUERY_LENGTH = 500;
 const DEFAULT_MAX_RESULTS = 30;
 const ABSOLUTE_MAX_RESULTS = 100;
 
-/** Binary file extensions to skip during source code text search */
-const BINARY_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".ico",
-  ".pdf",
-  ".zip",
-  ".tar",
-  ".gz",
-  ".7z",
-  ".rar",
-  ".exe",
-  ".dll",
-  ".so",
-  ".dylib",
-  ".bin",
-  ".iso",
-  ".woff",
-  ".woff2",
-  ".ttf",
-  ".eot",
-  ".mp3",
-  ".wav",
-  ".ogg",
-  ".mp4",
-  ".mov",
-  ".avi",
-  ".mkv",
-  ".sqlite",
-  ".db",
-  ".lock",
-]);
 
 /**
  * Searches code using the high-performance ripgrep native binary.
@@ -143,9 +108,7 @@ async function searchWithRipgrep({
             const rawFilePath = parsed.data.path?.text;
             if (!rawFilePath) continue;
 
-            const normalizedFile = rawFilePath
-              .replace(/\\/g, "/")
-              .replace(/^\.\//, "");
+            const normalizedFile = toPosix(rawFilePath).replace(/^\.\//, "");
 
             // Security check against PathGuard ignore rules
             try {
@@ -194,9 +157,7 @@ async function searchWithRipgrep({
           if (parsed.type === "match" && parsed.data) {
             const rawFilePath = parsed.data.path?.text;
             if (rawFilePath) {
-              const normalizedFile = rawFilePath
-                .replace(/\\/g, "/")
-                .replace(/^\.\//, "");
+              const normalizedFile = toPosix(rawFilePath).replace(/^\.\//, "");
               const lineNumber = parsed.data.line_number || 1;
               const lineContent = (parsed.data.lines?.text || "")
                 .trim()
@@ -249,7 +210,7 @@ async function fallbackJsSearch({
   }
 
   const allFiles = [];
-  const prefix = scopeSubPath === "." ? "" : scopeSubPath.replace(/\\/g, "/");
+  const prefix = scopeSubPath === "." ? "" : toPosix(scopeSubPath);
   guard.walk(searchAbsolute, prefix, allFiles);
 
   const matches = [];

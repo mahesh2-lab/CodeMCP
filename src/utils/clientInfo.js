@@ -34,8 +34,25 @@ export function getClientSource(req) {
     clientName = "AI Client";
   }
 
+  // 3. Client transport / type classification
+  const acceptHeader = req.headers["accept"] || "";
+  const isSse = acceptHeader.includes("text/event-stream") || req.query?.transport === "sse";
+  const uaLower = userAgent.toLowerCase();
+
+  let clientType = "streamable-http";
+  if (isSse) {
+    clientType = "sse";
+  } else if (uaLower.includes("curl") || uaLower.includes("wget") || uaLower.includes("httpie")) {
+    clientType = "cli/curl";
+  } else if (uaLower.includes("mozilla") && !mcpName) {
+    clientType = "browser";
+  } else if (mcpName) {
+    clientType = "mcp-client";
+  }
+
   return {
     clientName,
+    clientType,
     clientIp,
     location,
     channel,

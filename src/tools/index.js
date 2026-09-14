@@ -6,6 +6,7 @@ import { registerSearchCodeTool } from "./searchCode.js";
 import { registerDeleteFileTool } from "./deleteFile.js";
 import { registerExecuteCommandTool } from "./executeCommand.js";
 import { registerProjectContextTool } from "./projectContext.js";
+import { registerMemoryTools } from "./manageMemory.js";
 import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
 
 /**
@@ -19,9 +20,10 @@ export function registerTools(server, project) {
   const ctx = createToolContext(server, project);
   const permission = (project?.permission || "both").toLowerCase();
 
-  // 1. Metadata and Context Tool (always available if project is active)
+  // 1. Metadata, Context & Memory Tools (always available if project is active)
   if (project) {
     registerProjectContextTool(ctx);
+    registerMemoryTools(ctx);
   }
 
   // 2. Read-only inspection tools
@@ -72,4 +74,5 @@ export {
   registerDeleteFileTool,
   registerExecuteCommandTool,
   registerProjectContextTool,
+  registerMemoryTools,
 };

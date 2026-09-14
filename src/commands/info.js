@@ -16,8 +16,8 @@ export function infoProject(targetDir = process.cwd()) {
     project.permission === "both"
       ? pc.green("Read & Write (both)")
       : project.permission === "write"
-      ? pc.yellow("Write-only")
-      : pc.cyan("Read-only");
+        ? pc.yellow("Write-only")
+        : pc.cyan("Read-only");
 
   const approvalText = isApprovalRequired(project, "WRITE")
     ? pc.yellow("Enabled (Ask before changes)")
@@ -28,7 +28,9 @@ export function infoProject(targetDir = process.cwd()) {
     `${pc.bold("Name        :")} ${pc.green(project.name)} ${pc.dim(`(${project.id})`)}`,
     `${pc.bold("Root        :")} ${pc.dim(project.root)}`,
     `${pc.bold("Config      :")} ${
-      project.configFile ? pc.green(path.basename(project.configFile)) : pc.yellow("(none - using default)")
+      project.configFile
+        ? pc.green(path.basename(project.configFile))
+        : pc.yellow("(none - using default)")
     }`,
     `${pc.bold("Description :")} ${project.description || pc.dim("(none)")}`,
     `${pc.bold("Permission  :")} ${permissionText}`,

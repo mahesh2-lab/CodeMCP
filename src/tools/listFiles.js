@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PathGuardError } from "../utils/pathGuard.js";
+import { PathGuardError, toPosix } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
 import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
 
@@ -51,7 +51,7 @@ export function registerListFilesTool(serverOrCtx, project) {
       }
 
       const allFiles = [];
-      const relativePrefix = subPath === "." ? "" : subPath.replace(/\\/g, "/");
+      const relativePrefix = subPath === "." ? "" : toPosix(subPath);
       guard.walk(absoluteStart, relativePrefix, allFiles);
 
       const totalDiscovered = allFiles.length;

@@ -14,6 +14,7 @@ export function getProjectRoot() {
   return path.resolve(getEnv("PROJECT_ROOT", "."));
 }
 
+/** @deprecated Use getProjectRoot() dynamically to avoid stale values when process.env.PROJECT_ROOT changes */
 export const PROJECT_ROOT = getProjectRoot();
 
 export function getIgnorePatterns(customRoot = getProjectRoot()) {
@@ -56,7 +57,7 @@ export function getIgnorePatterns(customRoot = getProjectRoot()) {
 }
 
 export function isIgnored(targetPath, customRoot = getProjectRoot()) {
-  const normalized = targetPath.replace(/\\/g, "/");
+  const normalized = toPosix(targetPath);
   const base = path.basename(targetPath);
 
   // Always block .env and its variants (.env.local, .env.production, etc.) anywhere in path
@@ -69,7 +70,7 @@ export function isIgnored(targetPath, customRoot = getProjectRoot()) {
   if (/(^|\/)\.codemcp(\/|$)/i.test(normalized)) return true;
   if (/\b(id_rsa|id_ecdsa|id_ed25519|credentials\.enc)\b/i.test(normalized)) return true;
 
-  const rel = path.relative(customRoot, targetPath).replace(/\\/g, "/");
+  const rel = toPosix(path.relative(customRoot, targetPath));
   const segments = rel.split("/").filter(Boolean);
 
   const patterns = getIgnorePatterns(customRoot);
@@ -145,8 +146,44 @@ export function assertExistsAndAllowed(absolutePath, customRoot = getProjectRoot
   return stat;
 }
 
+/** Binary file extensions that should not be read as raw UTF-8 text or indexed in code search */
+export const BINARY_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".ico",
+  ".pdf",
+  ".zip",
+  ".tar",
+  ".gz",
+  ".7z",
+  ".rar",
+  ".exe",
+  ".dll",
+  ".so",
+  ".dylib",
+  ".bin",
+  ".iso",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".eot",
+  ".mp3",
+  ".wav",
+  ".ogg",
+  ".mp4",
+  ".mov",
+  ".avi",
+  ".mkv",
+  ".sqlite",
+  ".db",
+  ".lock",
+]);
+
 export function toPosix(p) {
-  return p.replace(/\\/g, "/");
+  return typeof p === "string" ? p.replace(/\\/g, "/") : "";
 }
 
 export function walk(dirAbsolute, dirRelative, results, customRoot = getProjectRoot()) {

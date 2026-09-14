@@ -175,7 +175,7 @@ export function deleteCredential(key) {
  *
  * @returns {string[]}
  */
-export function listCredentialKeys() {
+function listCredentialKeys() {
   const creds = getAllCredentials();
   return Object.keys(creds);
 }
@@ -187,4 +187,4 @@ export function clearAllCredentials() {
   saveAllCredentials({});
 }
 
-export { VAULT_FILE, VAULT_DIR, CODEMCP_DIR };
+export { VAULT_FILE };

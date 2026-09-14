@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logger } from "../utils/logger.js";
 import { getEnv } from "../utils/env.js";
 import { PathGuardError } from "../utils/pathGuard.js";
+import { recordAction } from "../services/memory.js";
 import { createToolContext, wrapToolHandler } from "./context.js";
 
 /**
@@ -46,7 +47,7 @@ const RESTRICTED_RULES = [
  * @param {string} projectRoot - Absolute path to project root
  * @returns {{ ok: boolean, shell?: string, systemInfo?: object, resolvedRoot?: string, error?: string, reason?: string }}
  */
-export function validateSystemAndCommand(command, projectRoot) {
+function validateSystemAndCommand(command, projectRoot) {
   const isWindows = process.platform === "win32";
 
   if (!command || typeof command !== "string" || !command.trim()) {
@@ -126,6 +127,70 @@ export function validateSystemAndCommand(command, projectRoot) {
 }
 
 /**
+ * Executes a sanitized shell command with timeout, output buffer capping,
+ * and platform-specific process group cleanup on timeout.
+ *
+ * @param {object} options
+ * @param {string} options.command - The raw command string to execute
+ * @param {string} options.cwd - Working directory
+ * @param {number} options.timeout - Timeout in milliseconds
+ * @returns {Promise<{ stdout: string, stderr: string, exitCode: number, duration: number, isTimedOut: boolean }>}
+ */
+function runCommandWithTimeout({ command, cwd, timeout }) {
+  const startTime = Date.now();
+  const execEnv = { ...process.env, PROJECT_ROOT: cwd };
+
+  // Strip sensitive credentials, cloud keys, and access tokens to prevent leakage
+  const sensitivePattern = /(API_KEY|AUTH|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_KEY|GITHUB|AWS|NPM|CODEMCP)/i;
+  for (const key of Object.keys(execEnv)) {
+    if (sensitivePattern.test(key)) {
+      delete execEnv[key];
+    }
+  }
+
+  return new Promise((resolve) => {
+    const child = exec(
+      command,
+      {
+        cwd,
+        timeout,
+        maxBuffer: 500 * 1024, // 500 KB stdout/stderr buffer
+        windowsHide: true,
+        env: execEnv,
+      },
+      (err, stdout, stderr) => {
+        const duration = Date.now() - startTime;
+        const isTimedOut = Boolean(err && (err.killed || err.signal === "SIGTERM" || err.code === "ETIMEDOUT"));
+
+        // On Windows, ensure orphaned child processes of cmd.exe are cleaned up
+        if (isTimedOut && process.platform === "win32" && child.pid) {
+          try {
+            exec(`taskkill /pid ${child.pid} /t /f`, { windowsHide: true });
+          } catch {
+            // Ignore kill errors for already-dead process
+          }
+        }
+
+        let normalizedStderr = stderr || "";
+        if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+          normalizedStderr += "\n[Error: Command output exceeded maximum buffer limit (500 KB)]";
+        }
+
+        const exitCode = isTimedOut ? 1 : typeof err?.code === "number" ? err.code : err ? 1 : 0;
+
+        resolve({
+          stdout: stdout || "",
+          stderr: normalizedStderr,
+          exitCode,
+          duration,
+          isTimedOut,
+        });
+      }
+    );
+  });
+}
+
+/**
  * Registers the `execute_command` tool with the MCP server.
  * Runs terminal/build/test commands within the scoped project root, applying pre-flight
  * security checks, environment variable sanitization, and execution timeouts.
@@ -143,117 +208,96 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
       description:
         "Executes a terminal/build/test command inside the project directory. Performs system safety checks before running.",
       inputSchema: {
-        command: z.string().describe("The shell command to execute, e.g. npm test or git status"),
+        command: z.string().describe("The shell command to execute (e.g., 'npm test', 'cargo build', 'python script.py')."),
         timeoutMs: z
           .number()
           .optional()
-          .describe("Maximum execution time in milliseconds (default: 30000, max: 60000)"),
+          .describe("Command timeout in milliseconds (default: 30000 ms, min: 1000, max: 60000)."),
+        summary: z
+          .string()
+          .optional()
+          .describe("Optional 1-sentence summary of what this command does and why it was run."),
       },
     },
     wrapToolHandler("EXEC", async (args) => {
-      const rawCmd = args?.command?.trim();
-      if (!rawCmd) {
-        throw new PathGuardError("command is required", 400);
-      }
-
-      // Pre-flight system and security check
+      const rawCmd = args?.command;
       const check = validateSystemAndCommand(rawCmd, projectRoot);
+
       if (!check.ok) {
-        throw new PathGuardError(check.error, 403);
+        logger.blocked("EXEC", rawCmd, check.reason || check.error);
+        throw new PathGuardError(check.error || "Command blocked by security policy", 403);
       }
 
       const cwd = check.resolvedRoot || path.resolve(projectRoot);
       const timeout = Math.min(Math.max(args?.timeoutMs || 30000, 1000), 60000);
-      const startTime = Date.now();
 
-      return new Promise((resolve) => {
-        const execEnv = { ...process.env, PROJECT_ROOT: cwd };
-
-        // Strip sensitive credentials, cloud keys, and access tokens to prevent leakage
-        const sensitivePattern = /(API_KEY|AUTH|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_KEY|GITHUB|AWS|NPM|CODEMCP)/i;
-        for (const key of Object.keys(execEnv)) {
-          if (sensitivePattern.test(key)) {
-            delete execEnv[key];
-          }
-        }
-
-        const child = exec(
-          rawCmd,
-          {
-            cwd,
-            timeout,
-            maxBuffer: 500 * 1024, // 500 KB stdout/stderr buffer
-            windowsHide: true,
-            env: execEnv,
-          },
-          (err, stdout, stderr) => {
-            const duration = Date.now() - startTime;
-            const isTimedOut = Boolean(err && (err.killed || err.signal === "SIGTERM" || err.code === "ETIMEDOUT"));
-
-            // On Windows, ensure orphaned child processes of cmd.exe are cleaned up
-            if (isTimedOut && process.platform === "win32" && child.pid) {
-              try {
-                exec(`taskkill /pid ${child.pid} /t /f`, { windowsHide: true });
-              } catch {
-                // Ignore kill errors for already-dead process
-              }
-            }
-
-            if (isTimedOut) {
-              logger.warn("EXEC", rawCmd, `Timed out after ${timeout}ms`);
-              return resolve({
-                isError: true,
-                structuredContent: {
-                  command: rawCmd,
-                  exitCode: 1,
-                  durationMs: timeout,
-                  stdout: stdout || "",
-                  stderr: stderr || "",
-                  timedOut: true,
-                },
-                content: [
-                  {
-                    type: "text",
-                    text: `Command timed out after ${timeout}ms\n\nPartial stdout:\n${stdout}\n\nPartial stderr:\n${stderr}`,
-                  },
-                ],
-              });
-            }
-
-            let normalizedStderr = stderr || "";
-            if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-              normalizedStderr += "\n[Error: Command output exceeded maximum buffer limit (500 KB)]";
-            }
-
-            const code = err ? (typeof err.code === "number" ? err.code : 1) : 0;
-            logger.toolExec(rawCmd, code, duration);
-
-            const responseText = [
-              `Command   : ${rawCmd}`,
-              `Exit Code : ${code}`,
-              `Duration  : ${duration}ms`,
-              `Platform  : ${check.systemInfo.platform} (${check.systemInfo.arch})`,
-              stdout ? `\n--- Output (stdout) ---\n${stdout.trim()}` : "",
-              normalizedStderr ? `\n--- Error Output (stderr) ---\n${normalizedStderr.trim()}` : "",
-            ]
-              .filter(Boolean)
-              .join("\n");
-
-            resolve({
-              isError: code !== 0,
-              structuredContent: {
-                command: rawCmd,
-                exitCode: code,
-                durationMs: duration,
-                stdout: stdout || "",
-                stderr: normalizedStderr,
-                timedOut: false,
-              },
-              content: [{ type: "text", text: responseText }],
-            });
-          }
-        );
+      const execResult = await runCommandWithTimeout({
+        command: rawCmd,
+        cwd,
+        timeout,
       });
+
+      const { stdout, stderr, exitCode, duration, isTimedOut } = execResult;
+
+      if (isTimedOut) {
+        logger.warn("EXEC", rawCmd, `Timed out after ${timeout}ms`);
+        return {
+          isError: true,
+          structuredContent: {
+            command: rawCmd,
+            exitCode: 1,
+            durationMs: timeout,
+            stdout,
+            stderr,
+            timedOut: true,
+          },
+          content: [
+            {
+              type: "text",
+              text: `Command timed out after ${timeout}ms\n\nPartial stdout:\n${stdout}\n\nPartial stderr:\n${stderr}`,
+            },
+          ],
+        };
+      }
+
+      const aiSummary = args?.summary?.trim() || args?.purpose?.trim();
+      const outputClean = (stdout || stderr || "").replace(/\s+/g, " ").trim();
+      const preview = outputClean ? outputClean.slice(0, 100) : "";
+      const finalSummary = aiSummary || `Executed "${rawCmd}" -> exit ${exitCode}${preview ? `: ${preview}` : ""}`;
+
+      logger.toolExec(rawCmd, exitCode, duration);
+      recordAction(ctx.project || projectRoot, {
+        action: "EXEC",
+        target: rawCmd,
+        client: logger.getActiveClient(),
+        details: `exit ${exitCode} (${duration}ms)`,
+        summary: finalSummary,
+        preview,
+      }).catch(() => {});
+
+      const responseText = [
+        `Command   : ${rawCmd}`,
+        `Exit Code : ${exitCode}`,
+        `Duration  : ${duration}ms`,
+        `Platform  : ${check.systemInfo.platform} (${check.systemInfo.arch})`,
+        stdout ? `\n--- Output (stdout) ---\n${stdout.trim()}` : "",
+        stderr ? `\n--- Error Output (stderr) ---\n${stderr.trim()}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      return {
+        isError: exitCode !== 0,
+        structuredContent: {
+          command: rawCmd,
+          exitCode,
+          durationMs: duration,
+          stdout,
+          stderr,
+          timedOut: false,
+        },
+        content: [{ type: "text", text: responseText }],
+      };
     })
   );
 }

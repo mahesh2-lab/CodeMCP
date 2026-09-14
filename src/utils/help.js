@@ -1,5 +1,18 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import pc from "picocolors";
-import { stripAnsi, printBox } from "./box.js";
+import { stripAnsi } from "./box.js";
+
+let defaultPkgVersion = "1.1.2";
+try {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const pkgPath = path.resolve(currentDir, "../../package.json");
+  if (fs.existsSync(pkgPath)) {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    if (pkg.version) defaultPkgVersion = pkg.version;
+  }
+} catch {}
 
 /**
  * Returns the fully styled, comprehensive CodeMCP help screen.
@@ -7,12 +20,8 @@ import { stripAnsi, printBox } from "./box.js";
  * @param {string} pkgVersion
  * @returns {string}
  */
-export function getCustomHelpText(pkgVersion = "1.1.0") {
+export function getCustomHelpText(pkgVersion = defaultPkgVersion) {
   const title = pc.bold(pc.bgCyan(pc.black(` CodeMCP v${pkgVersion} `)));
-  const boxRows = [
-    `${pc.bold("Model Context Protocol (MCP) Server for Local Codebases")}`,
-    `${pc.dim("Connects your local codebase to AI assistants, agents, and IDEs with 0 config.")}`,
-  ];
 
   // Section Header Helper
   const section = (name) => pc.bold(pc.cyan(`\n  ${name.toUpperCase()}\n`));

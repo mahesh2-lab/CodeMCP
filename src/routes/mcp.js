@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerTools } from "../tools/index.js";
 import { getActiveProject } from "../services/projects.js";
+import { formatMemoryForInstructions } from "../services/memory.js";
 import { logger } from "../utils/logger.js";
 import { getClientSource } from "../utils/clientInfo.js";
 
@@ -19,14 +20,23 @@ async function executeWithActiveClient(clientName, fn) {
   }
 }
 
-function buildServerInstructions(project) {
+async function buildServerInstructions(project) {
+  const memoryText = project?.root
+    ? await formatMemoryForInstructions(project.root)
+    : "";
+
   return [
     `Project: ${project?.name || "Unknown"} (${project?.id || "unknown"})`,
     project?.description ? `Description: ${project.description}` : "",
-    project?.techStack?.length ? `Tech Stack: ${project.techStack.join(", ")}` : "",
+    project?.techStack?.length
+      ? `Tech Stack: ${project.techStack.join(", ")}`
+      : "",
     project?.context ? `Context & Guidelines: ${project.context}` : "",
+    memoryText ? `\n--- Cross-Assistant Session Memory ---\n${memoryText}` : "",
     "Use list_files and read_file to inspect the project structure and source code.",
     "Use get_project_context to retrieve full project metadata and instructions at any time.",
+    "Use record_memory to preserve handoff notes, key architectural decisions, and next steps for other AI assistants.",
+    "When calling write_file, delete_file, or execute_command, provide a concise 'summary' parameter explaining your change or intent so succeeding AI assistants understand what you did.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -70,15 +80,15 @@ async function getOrCreateSession(sessionId, req, isInit = false) {
 
   const effectiveId = sessionId || randomUUID();
   const client = await getClientSource(req);
-  const project = getActiveProject();
-  const instructions = buildServerInstructions(project);
+  const project = req?.project || getActiveProject();
+  const instructions = await buildServerInstructions(project);
 
   const server = new McpServer(
     {
       name: project?.name || "project-agent-mcp",
       version: "1.0.0",
     },
-    { instructions }
+    { instructions },
   );
 
   registerTools(server, project);
@@ -122,7 +132,7 @@ router.post("/", async (req, res) => {
   try {
     const session = await getOrCreateSession(sessionId, req, isInit);
     return await executeWithActiveClient(session.client?.clientName, () =>
-      session.transport.handleRequest(req, res, req.body)
+      session.transport.handleRequest(req, res, req.body),
     );
   } catch (err) {
     logger.error("Session request failed", err);
@@ -138,7 +148,7 @@ const handleExistingSession = async (req, res) => {
 
   // If a human is viewing the endpoint in a browser (no session ID and not SSE)
   if (req.method === "GET" && !sessionId && !isSse) {
-    const project = getActiveProject();
+    const project = req?.project || getActiveProject();
     const client = await getClientSource(req);
     return res.status(200).json({
       status: "online",
@@ -162,7 +172,7 @@ const handleExistingSession = async (req, res) => {
   try {
     const session = await getOrCreateSession(sessionId, req, false);
     return await executeWithActiveClient(session.client?.clientName, () =>
-      session.transport.handleRequest(req, res)
+      session.transport.handleRequest(req, res),
     );
   } catch (err) {
     logger.error("Existing session request failed", err);

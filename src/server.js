@@ -27,7 +27,7 @@ app.use(
       "ngrok-skip-browser-warning",
       "Authorization",
     ],
-  })
+  }),
 );
 
 app.use(express.json());
@@ -37,7 +37,9 @@ const requestedPort = parseInt(getEnv("PORT", 4173), 10) || 4173;
 export const PORT = await findAvailablePort(requestedPort);
 
 if (PORT !== requestedPort) {
-  logger.serverWarn(`Port ${requestedPort} is currently occupied. Automatically switched to port ${PORT}.`);
+  logger.serverWarn(
+    `Port ${requestedPort} is currently occupied. Automatically switched to port ${PORT}.`,
+  );
 }
 
 let tunnelListener = null;
@@ -51,8 +53,6 @@ export const httpServer = app.listen(PORT, async () => {
     resetActiveProject();
   }
 
-
-
   const project = getActiveProject();
   tunnelListener = await startTunnel(PORT);
 
@@ -64,17 +64,22 @@ export const httpServer = app.listen(PORT, async () => {
     project.permission === "both"
       ? pc.green("Read & Write")
       : project.permission === "write"
-      ? pc.yellow("Write-only")
-      : pc.cyan("Read-only");
+        ? pc.yellow("Write-only")
+        : pc.cyan("Read-only");
 
   const title = pc.bold(pc.bgCyan(pc.black(" CodeMCP Project Agent (MCP) ")));
   const rows = [
     `${pc.bold("Project    :")} ${pc.green(project.name)} ${pc.dim(`(${project.id})`)}`,
     `${pc.bold("Root       :")} ${pc.dim(project.root)}`,
     `${pc.bold("Config     :")} ${
-      project.configFile ? pc.green(path.basename(project.configFile)) : pc.yellow("(auto-generated)")
+      project.configFile
+        ? pc.green(path.basename(project.configFile))
+        : pc.yellow("(auto-generated)")
     }`,
     `${pc.bold("Permission :")} ${permissionText}`,
+    ...(getEnv("API_KEY")
+      ? [`${pc.bold("Auth       :")} ${pc.green("Bearer Token Enforced")}`]
+      : []),
     `${pc.bold("Approval   :")} ${
       isApprovalRequired(project, "WRITE")
         ? pc.yellow("Enabled (Ask before changes)")
@@ -88,7 +93,11 @@ export const httpServer = app.listen(PORT, async () => {
   ];
 
   printBox(title, rows);
-  console.log(pc.dim("  Waiting for AI client requests... (tool activity appears below)\n"));
+  console.log(
+    pc.dim(
+      "  Waiting for AI client requests... (tool activity appears below)\n",
+    ),
+  );
 });
 
 async function handleShutdown(signal) {

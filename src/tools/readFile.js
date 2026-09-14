@@ -1,21 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { PathGuardError } from "../utils/pathGuard.js";
+import { PathGuardError, BINARY_EXTENSIONS, toPosix } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
 import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
 
 /** Maximum permitted file size for text reading (10 MB) to protect memory and event loop */
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
-
-/** Binary extensions that should not be read as raw UTF-8 text */
-const BINARY_EXTENSIONS = new Set([
-  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",
-  ".pdf", ".zip", ".tar", ".gz", ".7z", ".rar",
-  ".exe", ".dll", ".so", ".dylib", ".bin", ".iso",
-  ".woff", ".woff2", ".ttf", ".eot",
-  ".mp3", ".wav", ".ogg", ".mp4", ".mov", ".avi", ".mkv",
-]);
 
 /**
  * Registers the `read_file` tool with the MCP server.
@@ -65,7 +56,7 @@ export function registerReadFileTool(serverOrCtx, project) {
       }
 
       const content = await fs.readFile(absolutePath, "utf8");
-      const normalized = cleanRelPath.replace(/\\/g, "/");
+      const normalized = toPosix(cleanRelPath);
 
       logger.toolRead(normalized, stat.size);
 

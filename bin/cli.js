@@ -18,7 +18,7 @@ import { getCustomHelpText } from "../src/utils/help.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
 
-let pkgVersion = "1.1.0";
+let pkgVersion = "1.1.2";
 try {
   const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
   if (pkg.version) pkgVersion = pkg.version;
@@ -36,6 +36,9 @@ program.helpInformation = () => getCustomHelpText(pkgVersion);
 async function launchServer(targetPath, options = {}) {
   if (options.tunnel === false) {
     process.env.NGROK_ENABLED = "false";
+  }
+  if (options.notify === false) {
+    process.env.NOTIFY = "false";
   }
   if (options.port) {
     process.env.PORT = String(options.port);
@@ -62,10 +65,8 @@ async function launchServer(targetPath, options = {}) {
       console.error(pc.red(`Error: Directory not found: ${targetDir}`));
       process.exit(1);
     }
-  } else if (process.cwd() !== packageRoot) {
-    targetDir = process.cwd();
   } else {
-    targetDir = path.resolve(packageRoot, process.env.PROJECT_ROOT || "./test-project");
+    targetDir = path.resolve(process.cwd(), process.env.PROJECT_ROOT || ".");
   }
 
   process.env.PROJECT_ROOT = targetDir;
@@ -89,6 +90,7 @@ program
   .description("Start the MCP server for a project (default)")
   .option("-p, --port <number>", "Local port to listen on", "4173")
   .option("--no-tunnel", "Disable automatic ngrok tunnel")
+  .option("--no-notify", "Disable OS desktop notifications")
   .option("-y, --yes", "Skip interactive prompts and use detected defaults")
   .option("-a, --approval [mode]", "Require confirmation before applying file modifications")
   .option("-c, --confirm", "Alias for -a / --approval")

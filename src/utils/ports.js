@@ -6,7 +6,7 @@ import net from "node:net";
  * @param {number} port - Port to check
  * @returns {Promise<boolean>}
  */
-export function isPortAvailable(port) {
+function isPortAvailable(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
 

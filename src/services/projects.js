@@ -4,7 +4,7 @@ import { getEnv } from "../utils/env.js";
 
 let activeProject = null;
 
-export function loadContextFromFile(projectRoot, contextFilename = "CONTEXT.md") {
+function loadContextFromFile(projectRoot, contextFilename = "CONTEXT.md") {
   let contextPath = path.join(projectRoot, contextFilename);
   if (!fs.existsSync(contextPath) && contextFilename === "CONTEXT.md") {
     contextPath = path.join(projectRoot, "README.md");
@@ -98,7 +98,7 @@ export function getActiveProject() {
   return activeProject;
 }
 
-export function setActiveProject(project) {
+function setActiveProject(project) {
   activeProject = project;
 }
 
