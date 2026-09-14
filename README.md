@@ -1,48 +1,115 @@
-# CodeMCP ⚡
+<p align="center">
+  <a href="https://github.com/mahesh2-lab/CodeMCP" target="_blank" rel="noopener noreferrer">
+    <img src="./banner.png" alt="CodeMCP — The Zero-Config Model Context Protocol Server" width="100%" style="border-radius: 10px; max-width: 960px;" />
+  </a>
+</p>
 
-[![npm version](https://img.shields.io/npm/v/@mahesh2-lab/codemcp.svg?style=flat-square&color=cb3837)](https://www.npmjs.com/package/@mahesh2-lab/codemcp)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg?style=flat-square)](https://nodejs.org/)
-[![Protocol: MCP](https://img.shields.io/badge/protocol-Model%20Context%20Protocol-6366f1.svg?style=flat-square)](https://modelcontextprotocol.io)
+<div align="center">
 
-**Connect your local codebase to any AI assistant in seconds.**
+# CodeMCP
 
-CodeMCP is a zero-setup **Model Context Protocol (MCP)** server. It gives AI tools (Claude, Cursor, VS Code, Windsurf, web agents) safe access to inspect files, search code, execute commands, remember architectural context across sessions, and make edits in your project—without manual copy-pasting.
+**The Enterprise-Grade, Zero-Config Model Context Protocol (MCP) Server for Local Codebases**
+
+[![npm version](https://img.shields.io/npm/v/@mahesh2-lab/codemcp?style=flat-square&color=black&labelColor=222)](https://www.npmjs.com/package/@mahesh2-lab/codemcp)
+[![npm downloads](https://img.shields.io/npm/dm/@mahesh2-lab/codemcp?style=flat-square&color=blue&labelColor=222)](https://www.npmjs.com/package/@mahesh2-lab/codemcp)
+[![Protocol](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-6366f1?style=flat-square&labelColor=222)](https://modelcontextprotocol.io)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-339933?style=flat-square&labelColor=222)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow?style=flat-square&labelColor=222)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square&labelColor=222)](https://github.com/mahesh2-lab/CodeMCP/pulls)
+
+<p align="center">
+  Connect any AI assistant — <b>Claude Desktop</b>, <b>Cursor IDE</b>, <b>Windsurf</b>, or <b>ChatGPT</b> — directly to your local codebase.<br>
+  Built-in <b>interactive change approval</b>, <b>cross-assistant session memory</b>, <b>ripgrep search</b>, and <b>sandboxed security</b>.
+</p>
+
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-why-codemcp">Why CodeMCP</a> •
+  <a href="#-interactive-change-approval-human-in-the-loop">Change Approval</a> •
+  <a href="#-cross-assistant-session-memory">Memory Engine</a> •
+  <a href="#-client-integrations">Client Setup</a> •
+  <a href="#-available-mcp-tools">Tools Reference</a> •
+  <a href="#-security-architecture">Security</a>
+</p>
+
+</div>
 
 ---
 
-## ✨ Highlights
+## ⚡ Overview
 
-* ⚡ **Zero Setup**: Run `npx @mahesh2-lab/codemcp` in any project folder and start immediately.
-* ✋ **Review Changes (Accept / Reject)**: Interactive terminal review box with colorized line diffs before any AI edits touch your disk.
-* 🧠 **Cross-Assistant Session Memory**: Automatically tracks decisions, file activity, and handoff notes in `.codemcp/memory.json` across Claude, Cursor, and ChatGPT.
-* 🔔 **Desktop Notifications**: System Toast notifications on Windows, macOS, and Linux whenever files are created, updated, or awaiting review.
-* 🌐 **Instant Public URL**: Built-in automated HTTPS tunnel via `@ngrok/ngrok` so web-based AI tools can connect to your local machine.
-* 🛡️ **Sandbox Security**: Blocks path traversal (`../`), protects sensitive files (`.env*`, `.git`, SSH keys), and prevents dangerous bash commands.
-* 📋 **Project Guidelines (`CONTEXT.md`)**: Automatically injects your architecture rules and coding standards directly into the AI's prompt.
-* 🎚️ **Permission Tiers**: Choose `read-only`, `write-only`, or full `read & write` access.
-* 📊 **Aligned Telemetry Logs**: Clean column-aligned request logs (`req_XXXX`) with client detection and timing.
+**CodeMCP** is a developer-first Model Context Protocol (MCP) server that empowers LLM coding assistants to navigate, understand, and safely modify your local projects without the friction of copying and pasting code.
+
+Traditional MCP setups require complicated STDIO pipelines, manual JSON plumbing, and lack safety guardrails. **CodeMCP runs as a self-contained, interactive CLI service** with an automated public HTTPS tunnel, real-time column-aligned telemetry, native desktop alerts, and human-in-the-loop diff approval before any write or delete touches your disk.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          AI Clients & Agents                                │
+│       Claude Desktop  •  Cursor IDE  •  Windsurf  •  ChatGPT / Web          │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ StreamableHTTP / JSON-RPC
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            CodeMCP Engine                                   │
+│  [Auth Guard] • [Path Sandboxing] • [LCS Diff Review] • [Session Memory]   │
+└──────────────────┬──────────────────────────────────────┬───────────────────┘
+                   │                                      │
+                   ▼                                      ▼
+       Local File Operations                  External AI Tunnel
+       • Safe Read/Write/Delete               • Automated Ngrok Tunnel
+       • Ripgrep Multi-Search                 • Zero Port-Forwarding
+       • Terminal Command Sandbox             • AES-256 Encrypted Vault
+```
+
+---
+
+## 💎 Why CodeMCP?
+
+| Capability | Standard File Tools | CodeMCP |
+|---|:---:|:---:|
+| **Zero Configuration** | ❌ Manual JSON config required | ✅ Instant `npx @mahesh2-lab/codemcp` |
+| **Human-in-the-Loop Review** | ❌ Blind writes directly to disk | ✅ **Enclosed visual diff box with [y/n/d] prompts** |
+| **Cross-Assistant Memory** | ❌ Context lost between models | ✅ **Persistent `.codemcp/memory.json` knowledge store** |
+| **Remote Web Agent Access** | ❌ Requires router port-forwarding | ✅ **Automatic HTTPS reverse tunnel via Ngrok** |
+| **Desktop Notifications** | ❌ Must stare at terminal | ✅ **Native OS toast alerts on Windows, macOS & Linux** |
+| **High-Speed Code Search** | ⚠️ Slow JavaScript file walks | ✅ **Native ripgrep binary speed with fallback** |
+| **Sandbox & Secret Guard** | ❌ Overwrites `.env` and `.git` | ✅ **Strict PathGuard blocking traversal & secret leaks** |
+
+---
+
+## 🌟 Core Capabilities
+
+| Feature | Description |
+|---|---|
+| ⚡ **Zero Setup** | Launch instantly in any repository with `npx @mahesh2-lab/codemcp`. No complex configuration required. |
+| ✋ **Interactive Change Review** | Beautiful terminal diff box previews proposed additions and deletions before anything writes to disk. |
+| 🧠 **Cross-Assistant Memory** | Maintains a persistent `.codemcp/memory.json` knowledge store across Claude, Cursor, and ChatGPT sessions. |
+| 🔔 **Desktop Notifications** | Rich Toast notifications on Windows, macOS, and Linux alert you when files are edited or approval is needed. |
+| 🌐 **Automated Public Tunnel** | Built-in HTTPS reverse tunneling via `@ngrok/ngrok` so web-based agents can connect to your local repo. |
+| 🛡️ **Sandbox Hardening** | PathGuard blocks path traversal (`../../`), protects secret files (`.env*`, `.git`, SSH keys), and prevents dangerous commands. |
+| 📋 **Project Rules Injection** | Automatically feeds your conventions (`CONTEXT.md`) and tech stack directly into the model's instructions. |
+| 📊 **Real-time Telemetry** | Column-aligned console output with request tracking (`req_XXXX`) and sub-millisecond execution timings. |
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Run in any project
+### Option A: Direct Run (Recommended)
 
-Run directly with `npx` inside your project directory:
+Navigate into any codebase and run:
 
 ```bash
 npx @mahesh2-lab/codemcp
 ```
 
-Or install globally to use the `codemcp` command anywhere:
+### Option B: Global Installation
 
 ```bash
 npm install -g @mahesh2-lab/codemcp
 codemcp
 ```
 
-When started, CodeMCP prints your project details and endpoints:
+### Startup Dashboard:
 
 ```text
 ┌─  CodeMCP Project Agent (MCP)  ────────────────────────────────┐
@@ -62,9 +129,9 @@ When started, CodeMCP prints your project details and endpoints:
 
 ---
 
-## ✋ Accept & Reject Changes (Interactive Review)
+## ✋ Interactive Change Approval (Human-in-the-Loop)
 
-Never let an AI assistant overwrite files without your permission. When approval mode is active, CodeMCP pauses the AI and presents a clean, enclosed diff preview in your terminal:
+Never worry about an AI model unexpectedly overwriting your work. When change approval is enabled, CodeMCP pauses execution and renders a focused terminal diff preview:
 
 ```text
 15:09:21 req_8043 ⚠ WRITE    index.html
@@ -101,75 +168,86 @@ Apply changes? [y] Accept  [n] Reject  [d] Full diff  [q] Quit: y
 15:09:43 req_8043 ✓ WRITE    index.html · 7.2 KB written
 ```
 
-### Instant Controls (Raw Keypress)
-* **`y`** (or **Enter**): Accepts and writes the change immediately.
-* **`n`** (or **Esc**): Rejects the change. The file remains untouched and the AI is informed of the rejection.
-* **`d`**: Expands and prints the full, untruncated diff with complete context.
-* **`q`**: Aborts and rejects the request.
+### Keypress Review Controls
+* **`y`** (or **Enter**): Confirms and applies the change to disk immediately.
+* **`n`** (or **Esc**): Rejects the modification. File is untouched and the agent receives the rejection.
+* **`d`**: Expands and prints the complete, untruncated diff with full file context.
+* **`q`**: Cancels and aborts the operation.
 
-### Enabling or Disabling Change Approval:
-* **CLI flags** on launch:
+### Configuring Approval Mode:
+* **Launch Flag**:
   ```bash
-  codemcp --approval       # or codemcp -a
-  codemcp --no-approval    # bypass prompts (auto-apply)
+  codemcp --approval          # or codemcp -a
+  codemcp --no-approval       # bypass prompts (auto-apply)
   ```
-* **Persistent setting** in your project:
+* **Persistent Setting**:
   ```bash
-  codemcp approval on      # Sets approval: true in codemcp.json
-  codemcp approval off     # Sets approval: false in codemcp.json
+  codemcp approval on         # permanently enables approval in codemcp.json
+  codemcp approval off        # permanently disables approval in codemcp.json
   ```
-* **Destructive-only mode**:
-  In `codemcp.json`, set `"approval": "destructive"` to only require confirmation on file deletions and terminal command executions.
+* **Destructive-Only**: Set `"approval": "destructive"` in `codemcp.json` to only prompt for file deletions and command executions.
 
 ---
 
 ## 🧠 Cross-Assistant Session Memory
 
-CodeMCP maintains a persistent, project-scoped memory journal in `.codemcp/memory.json`. When switching between different AI assistants (e.g., from Claude Desktop to Cursor to ChatGPT), context is preserved automatically.
+When working across multiple AI clients (e.g. brainstorming in Claude Desktop, coding in Cursor IDE, and generating unit tests via ChatGPT), context is traditionally lost.
 
-### What Memory Tracks:
-1. **Architectural Decisions**: Key patterns and libraries chosen by previous assistants.
-2. **Project Summaries**: High-level notes on ongoing refactors and milestones.
-3. **Pending Next Steps**: Checklists of pending items left by the prior agent.
-4. **Recent Activity Journal**: A rolling record of the last 15 file modifications and executions.
+CodeMCP introduces **Cross-Assistant Memory** (`.codemcp/memory.json`):
 
-### Memory Handshake:
-Every time an AI client connects, CodeMCP automatically injects recent memory directly into the system prompt:
-```text
---- Cross-Assistant Session Memory ---
-[Project Session Notes: CodeMCP (Claude Desktop - 9/14/2026, 3:15 PM)]
-• Summary: Added approval review diff box and status bar
-• Architectural Decisions: Used AsyncLocalStorage for request ID tracing
-• Pending Next Steps: Verify terminal keypress handlers
-[Recent Workspace Activity]
-  - [WRITE] src/utils/logger.js — Aligned column logging
-  - [WRITE] src/services/approval.js — Box rendering & status footer
+```json
+{
+  "version": 1,
+  "projectId": "my-app",
+  "projectName": "My Application",
+  "lastHandoff": {
+    "summary": "Completed authentication middleware and unit test suite",
+    "decisions": "Selected JWT with 15m access token and rotating refresh token in HTTP-only cookies",
+    "nextSteps": "Implement rate-limiting on /auth/login and integrate Redis blacklist",
+    "client": "Claude Desktop",
+    "updatedAt": "2026-09-14T15:30:00.000Z"
+  },
+  "recentActions": [
+    {
+      "timestamp": "2026-09-14T15:28:10.000Z",
+      "action": "WRITE",
+      "target": "src/middleware/auth.js",
+      "client": "Claude Desktop",
+      "details": "Created 1840 bytes",
+      "summary": "Implemented Bearer token validation"
+    }
+  ]
+}
 ```
 
-AI assistants can also explicitly call `record_memory` to leave handoff notes for succeeding models, or call `get_memory` to inspect the full project log.
+### How It Works:
+1. **Automatic Memory Injection**: Whenever any AI client establishes a session, recent memory and the last 15 file actions are prepended to the system instructions.
+2. **`record_memory` Tool**: The assistant records key architectural decisions, ongoing tasks, and notes for succeeding models.
+3. **`get_memory` Tool**: Models can retrieve full past context without re-scanning files.
 
 ---
 
 ## 🔔 Native Desktop Notifications
 
-CodeMCP alerts you in real time via your operating system's native notification system:
-* **Windows**: Rich Toast Notifications via WinRT PowerShell.
-* **macOS**: Native Notification Center banners via AppleScript.
-* **Linux**: Freedesktop notifications via `notify-send`.
+Stay informed during long-running agent workflows without staring at the terminal:
 
-Notifications trigger when:
-* ⚠️ An AI change requires interactive approval in your terminal.
-* 📝 A file is modified or created by the AI.
-* 🗑️ A file is deleted from the workspace.
-* 🛑 An unsafe action or path traversal attack is blocked.
+* **Windows**: Native WinRT Toast notifications with CodeMCP branding and icon.
+* **macOS**: Native Notification Center alerts via AppleScript.
+* **Linux**: Freedesktop alerts via `notify-send`.
+
+### Automatic Alerts:
+* ⚠️ Change approval required in terminal.
+* 📝 File written or modified.
+* 🗑️ File deleted from project.
+* 🛑 Forbidden path traversal or dangerous command blocked.
 
 *(To disable notifications, launch with `--no-notify` or set `NOTIFY=false`)*.
 
 ---
 
-## 📊 Real-Time Telemetry & Aligned Logs
+## 📊 Real-Time Telemetry & Log Auditing
 
-CodeMCP provides clean, column-aligned logs with microsecond request IDs (`req_XXXX`) to make concurrent agent activities easy to follow:
+CodeMCP formats all activities into an aligned, column-oriented stream with microsecond request tracing:
 
 ```text
 15:05:31        ✓ CONNECT  Claude-User (ngrok tunnel)
@@ -184,15 +262,18 @@ CodeMCP provides clean, column-aligned logs with microsecond request IDs (`req_X
 
 ---
 
-## 🔌 Connecting to Your AI Assistant
+## 🔌 Client Integrations
 
 ### 1. Cursor / VS Code / Windsurf
-In your editor's MCP server configuration (e.g. `Settings` -> `MCP`):
+In your IDE settings -> **Features** -> **MCP**:
 * **Transport**: `HTTP` or `SSE`
-* **URL**: `http://localhost:4173/mcp` (or your Global Ngrok URL)
+* **URL**: `http://localhost:4173/mcp` (or your Global Tunnel URL)
 
 ### 2. Claude Desktop
-Add CodeMCP to your `claude_desktop_config.json`:
+Add CodeMCP to your configuration:
+* **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+* **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
 ```json
 {
   "mcpServers": {
@@ -204,117 +285,88 @@ Add CodeMCP to your `claude_desktop_config.json`:
 }
 ```
 
-### 3. Web AI & Remote Connectors (ChatGPT / Claude Web / Anthropic Console)
-1. Copy the **Global URL** printed in your terminal (e.g., `https://<domain>.ngrok-free.app/mcp`).
-2. In your web AI platform, navigate to **Connectors / MCP Integrations** -> **Add Custom Connector**.
-3. Paste the URL. (Authentication: None or Bearer Token if configured).
+### 3. Remote AI Agents (ChatGPT / Claude Web / Anthropic Console)
+1. Start CodeMCP (public tunnel enables automatically).
+2. Copy the **Global URL** (e.g. `https://<domain>.ngrok-free.app/mcp`).
+3. In your web AI platform, choose **Custom Connectors / MCP** and paste the URL.
 
 ---
 
-## 🔐 Encrypted Credential Vault & Auth
+## 🧰 Available MCP Tools
 
-CodeMCP eliminates plain-text tokens by storing sensitive credentials in an encrypted, machine-bound vault at `~/.codemcp/credentials.enc` using **AES-256-GCM**:
-
-```bash
-# View stored credentials (masked)
-codemcp credentials status
-
-# Store or update a token in the vault
-codemcp credentials set NGROK_API_KEY <your-api-key>
-
-# Delete a specific key
-codemcp credentials delete NGROK_API_KEY
-
-# Clear the vault entirely
-codemcp credentials clear
-```
-
-### Enforcing API Key Authentication
-To secure your MCP server with a Bearer token:
-```bash
-# Pass via environment variable
-export API_KEY="your-secret-token"
-codemcp
-```
-When set, all `/mcp` endpoints require the header `Authorization: Bearer your-secret-token`.
-
----
-
-## ⚙️ Configuration (`codemcp.json`)
-
-You can customize project settings with a `codemcp.json` file in your project root:
-
-```json
-{
-  "id": "my-app",
-  "name": "My Application",
-  "description": "Full-stack Node.js web application",
-  "permission": "both",
-  "approval": true,
-  "contextFile": "CONTEXT.md"
-}
-```
-
-| Field | Options | Description |
-| :--- | :--- | :--- |
-| `permission` | `"both"` (default), `"read"`, `"write"` | Controls whether AI can read, write, or both. |
-| `approval` | `true`, `false`, `"destructive"` | Require confirmation before applying file modifications. |
-| `contextFile` | `"CONTEXT.md"` | Path to your coding conventions file. |
-| `techStack` | `["Node.js", "React", "Tailwind"]` | Tech stack tags provided to the AI. |
-
----
-
-## 🧠 Teaching the AI Your Rules (`CONTEXT.md`)
-
-Create a `CONTEXT.md` in your project root. CodeMCP loads these guidelines and presents them to the AI model on connection:
-
-```markdown
-# Coding Standards & Architecture
-- Architecture: Feature-sliced modular architecture under `src/modules/`
-- Formatting: 2 spaces, double quotes, semicolons required
-- State Management: Use Zustand stores in `src/store/`
-- Testing: Write Vitest unit tests in `__tests__/` alongside source files
-```
-
----
-
-## 🧰 Available Tools for AI
-
-| Tool Name | Parameters | Description |
-| :--- | :--- | :--- |
-| `list_files` | `path`, `maxFiles` | Explores the project folder tree respecting `.gitignore` and `.mcpignore`. |
-| `read_file` | `path` | Reads text file contents safely up to 10 MB. |
-| `search_code` | `query`, `path`, `isRegex`, `caseSensitive` | Fast multi-file search powered by embedded native ripgrep with JS fallback. |
-| `write_file` | `path`, `content`, `summary` | Creates or updates files inside the project (prompts for Approval if enabled). |
-| `delete_file` | `path`, `summary` | Deletes a project file (prompts for Approval if enabled). |
-| `execute_command` | `command`, `timeout` | Runs project terminal commands in an isolated environment with security blacklists. |
-| `record_memory` | `summary`, `decisions`, `nextSteps` | Saves architectural decisions, session summaries, and handoff checklists for other AI assistants. |
-| `get_memory` | *(none)* | Retrieves cross-assistant session memory, architecture notes, and recent file activity. |
-| `get_project_context` | *(none)* | Returns project metadata, instructions, and loaded `CONTEXT.md` guidelines. |
+| Tool | Parameters | Description |
+|---|---|---|
+| `list_files` | `path`, `maxFiles` | Explores project directories respecting `.gitignore` and `.mcpignore`. |
+| `read_file` | `path` | Reads text file content safely up to 10 MB. |
+| `search_code` | `query`, `path`, `isRegex`, `caseSensitive` | High-speed code search powered by native ripgrep with fallback. |
+| `write_file` | `path`, `content`, `summary` | Creates or modifies project files (triggers interactive review if enabled). |
+| `delete_file` | `path`, `summary` | Safely removes project files (triggers interactive review if enabled). |
+| `execute_command` | `command`, `timeoutMs` | Runs project build/test commands within an isolated sandbox. |
+| `record_memory` | `summary`, `decisions`, `nextSteps` | Saves architectural context, milestones, and handoffs in `.codemcp/memory.json`. |
+| `get_memory` | *(none)* | Retrieves cross-assistant session memory and recent file activity history. |
+| `get_project_context` | *(none)* | Loads project metadata, instructions, and `CONTEXT.md` guidelines. |
 
 ---
 
 ## 🛠️ CLI Commands Reference
 
-| Command | Options | What it does |
-| :--- | :--- | :--- |
-| `codemcp [path]` | `-p, --port <port>`<br>`-a, --approval [mode]`<br>`--no-approval`<br>`--no-tunnel`<br>`--no-notify`<br>`-y, --yes` | Starts the server for the specified folder (defaults to current directory). |
-| `codemcp init [path]` | `-y, --yes` | Interactive setup wizard creating `codemcp.json`, `.mcpignore`, and `CONTEXT.md`. |
-| `codemcp info [path]` | *(none)* | Displays project metadata, permissions, active context file, and indexed file count. |
-| `codemcp approval [on\|off]` | *(none)* | Views or toggles change approval directly in `codemcp.json`. |
-| `codemcp credentials` | `status`, `set <k> <v>`, `delete <k>`, `clear` | Manages machine-bound encrypted credentials in `~/.codemcp/credentials.enc`. |
+```bash
+# Start server in current folder
+codemcp
+
+# Start server for a specific project directory
+codemcp ./path/to/project
+
+# Enable or disable change approval
+codemcp --approval
+codemcp approval on
+codemcp approval off
+
+# Disable public tunnel (run locally only)
+codemcp --no-tunnel
+
+# Disable desktop notifications
+codemcp --no-notify
+
+# Manage encrypted credentials vault
+codemcp credentials status
+codemcp credentials set NGROK_API_KEY <token>
+codemcp credentials delete NGROK_API_KEY
+codemcp credentials clear
+
+# Project metadata inspector & wizard
+codemcp info
+codemcp init
+```
 
 ---
 
 ## 🔒 Security Architecture
 
-* **Path Traversal Containment**: PathGuard resolves and canonicalizes paths, blocking traversal (`../../`) and system directories (`/etc`, `C:\Windows`).
-* **Protected Blacklists**: Files matching `.env*`, `.git`, `node_modules`, `~/.codemcp/credentials.enc`, and SSH keys are hidden and write-protected.
-* **Execution Guardrails**: The terminal execution tool blocks destructive commands (e.g. `rm -rf /`, `del /f /s`, `format`, `sudo`, `curl | bash`) and limits runtime to 30 seconds.
-* **Encrypted Vault**: Credentials and tunnel tokens are encrypted with AES-256-GCM using hardware-derived keys.
+* **Path Traversal Containment**: PathGuard verifies and canonicalizes every requested file path, strictly blocking traversal attacks (`../../`) and absolute system paths (`/etc`, `C:\Windows`).
+* **Sensitive File Protection**: Files matching `.env*`, `.git`, `node_modules`, `~/.codemcp/credentials.enc`, and SSH keys (`id_rsa`) are write-protected and hidden from tools.
+* **Command Sandboxing**: The terminal execution tool blocks destructive commands (e.g. `rm -rf /`, `del /s /q`, `format`, `sudo`, `curl | bash`) and sanitizes process environment variables to prevent secret leakage.
+* **Machine-Bound Credential Vault**: Ngrok API tokens and keys are encrypted with **AES-256-GCM** using keys derived from local host machine fingerprints (`~/.codemcp/credentials.enc`).
+* **Bearer Token Authentication**: Enforce bearer token authorization on all endpoints by setting `API_KEY="your-secret"`.
 
 ---
 
-## License
+## ⚙️ Configuration (`codemcp.json`)
+
+```json
+{
+  "id": "my-app",
+  "name": "My Application",
+  "description": "Full-stack web application",
+  "permission": "both",
+  "approval": true,
+  "contextFile": "CONTEXT.md",
+  "techStack": ["Node.js", "React", "TypeScript"]
+}
+```
+
+---
+
+## 📄 License
 
 [MIT](LICENSE) © [CodeMCP Contributors](https://github.com/mahesh2-lab/CodeMCP)

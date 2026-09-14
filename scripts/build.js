@@ -57,6 +57,12 @@ async function build() {
     console.log("🖼 Copied icon.png to dist/icon.png");
   }
 
+  const rootBanner = path.join(rootDir, "banner.png");
+  if (fs.existsSync(rootBanner)) {
+    fs.copyFileSync(rootBanner, path.join(distDir, "banner.png"));
+    console.log("🖼 Copied banner.png to dist/banner.png");
+  }
+
   console.log(`📦 Building CodeMCP v${pkgVersion} with esbuild...`);
 
   // 1. Build server.js -> dist/server.js
