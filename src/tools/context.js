@@ -96,20 +96,39 @@ export function wrapToolHandler(action, handlerFn) {
   };
 }
 
+/** Maximum character length for a tool text response to prevent context bloat (250 KB) */
+export const MAX_TOOL_RESPONSE_CHARS = 250_000;
+
 /**
  * Formats standard MCP dual structured/text responses for client consumption.
+ * Caps maximum text length to prevent context-window exhaustion from massive payloads.
  *
  * @param {object} structuredContent - Machine-readable payload
  * @param {string} [textMessage] - Optional custom markdown/text view. Defaults to JSON stringified payload.
  * @returns {McpToolResponse} Standardized MCP response object
  */
 export function formatToolResponse(structuredContent, textMessage) {
+  let text = textMessage;
+  if (text === undefined) {
+    try {
+      text = JSON.stringify(structuredContent, null, 2);
+    } catch {
+      text = String(structuredContent);
+    }
+  }
+
+  if (typeof text === "string" && text.length > MAX_TOOL_RESPONSE_CHARS) {
+    text =
+      text.slice(0, MAX_TOOL_RESPONSE_CHARS) +
+      `\n\n... [Response truncated: output exceeded ${MAX_TOOL_RESPONSE_CHARS.toLocaleString()} character limit]`;
+  }
+
   return {
     structuredContent,
     content: [
       {
         type: "text",
-        text: textMessage !== undefined ? textMessage : JSON.stringify(structuredContent, null, 2),
+        text,
       },
     ],
   };

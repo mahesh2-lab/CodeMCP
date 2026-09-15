@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { PathGuardError, BINARY_EXTENSIONS, toPosix } from "../utils/pathGuard.js";
+import { PathGuardError, BINARY_EXTENSIONS, toPosix, isBinaryBuffer } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
 import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
 
@@ -55,7 +55,11 @@ export function registerReadFileTool(serverOrCtx, project) {
         );
       }
 
-      const content = await fs.readFile(absolutePath, "utf8");
+      const buffer = await fs.readFile(absolutePath);
+      if (isBinaryBuffer(buffer.subarray(0, 1024))) {
+        throw new PathGuardError(`Cannot read binary file as text (${cleanRelPath})`, 400);
+      }
+      const content = buffer.toString("utf8");
       const normalized = toPosix(cleanRelPath);
 
       logger.toolRead(normalized, stat.size);

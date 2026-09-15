@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { rgPath } from "@vscode/ripgrep";
 import { z } from "zod";
-import { PathGuardError, BINARY_EXTENSIONS, toPosix } from "../utils/pathGuard.js";
+import { PathGuardError, BINARY_EXTENSIONS, toPosix, isBinaryBuffer } from "../utils/pathGuard.js";
 import { logger } from "../utils/logger.js";
 import {
   createToolContext,
@@ -228,7 +228,19 @@ async function fallbackJsSearch({
       if (guard.isIgnored(absPath)) continue;
 
       const stat = await fsp.stat(absPath);
-      if (stat.size > MAX_SEARCH_FILE_SIZE_BYTES) continue;
+      if (stat.size > MAX_SEARCH_FILE_SIZE_BYTES || stat.size === 0) continue;
+
+      // Early binary content sniffing: check first 512 bytes before reading full content
+      const handle = await fsp.open(absPath, "r");
+      let isBinary = false;
+      try {
+        const sniffBuffer = Buffer.alloc(Math.min(512, stat.size));
+        await handle.read(sniffBuffer, 0, sniffBuffer.length, 0);
+        isBinary = isBinaryBuffer(sniffBuffer);
+      } finally {
+        await handle.close();
+      }
+      if (isBinary) continue;
 
       const content = await fsp.readFile(absPath, "utf8");
       const lines = content.split(/\r?\n/);

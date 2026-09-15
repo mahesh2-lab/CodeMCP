@@ -106,11 +106,3 @@ export function resetActiveProject() {
   activeProject = null;
 }
 
-export function getProjectByKey(key) {
-  const configuredKey = getEnv("API_KEY");
-  if (configuredKey && key === configuredKey) {
-    return getActiveProject();
-  }
-  return null;
-}
-

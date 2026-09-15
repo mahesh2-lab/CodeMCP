@@ -14,6 +14,9 @@ import {
   VAULT_FILE,
 } from "../src/utils/credentials.js";
 import { getCustomHelpText } from "../src/utils/help.js";
+import { startServer, app, setupShutdownHandlers } from "../src/server.js";
+setupShutdownHandlers();
+export { startServer, app };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
@@ -82,7 +85,7 @@ async function launchServer(targetPath, options = {}) {
   }
 
 
-  await import("../src/server.js");
+  await startServer(options);
 }
 
 program

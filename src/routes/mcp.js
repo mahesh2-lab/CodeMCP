@@ -9,7 +9,30 @@ import { logger } from "../utils/logger.js";
 import { getClientSource } from "../utils/clientInfo.js";
 
 const router = Router();
-const sessions = new Map();
+export const sessions = new Map();
+
+/** Session inactivity timeout (default: 30 minutes) */
+export const SESSION_TTL_MS = 30 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Sweeps the active sessions map and evicts sessions that have had no activity
+ * within SESSION_TTL_MS, preventing memory leaks from abrupt client or tunnel disconnects.
+ */
+export function cleanupInactiveSessions(now = Date.now()) {
+  for (const [id, session] of sessions.entries()) {
+    if (now - (session.lastAccessed || 0) > SESSION_TTL_MS) {
+      logger.sessionEnd(id, session.client);
+      try {
+        session.transport?.close?.();
+      } catch {}
+      sessions.delete(id);
+    }
+  }
+}
+
+const cleanupTimer = setInterval(cleanupInactiveSessions, CLEANUP_INTERVAL_MS);
+cleanupTimer.unref();
 
 async function executeWithActiveClient(clientName, fn) {
   logger.setActiveClient(clientName);
@@ -75,7 +98,9 @@ function isInitMessage(body) {
 
 async function getOrCreateSession(sessionId, req, isInit = false) {
   if (sessionId && sessions.has(sessionId)) {
-    return sessions.get(sessionId);
+    const existing = sessions.get(sessionId);
+    existing.lastAccessed = Date.now();
+    return existing;
   }
 
   const effectiveId = sessionId || randomUUID();
@@ -115,7 +140,7 @@ async function getOrCreateSession(sessionId, req, isInit = false) {
   };
 
   await server.connect(transport);
-  sessionData = { server, transport, project, client };
+  sessionData = { server, transport, project, client, lastAccessed: Date.now() };
   sessions.set(effectiveId, sessionData);
 
   if (!isInit) {

@@ -14,9 +14,6 @@ export function getProjectRoot() {
   return path.resolve(getEnv("PROJECT_ROOT", "."));
 }
 
-/** @deprecated Use getProjectRoot() dynamically to avoid stale values when process.env.PROJECT_ROOT changes */
-export const PROJECT_ROOT = getProjectRoot();
-
 export function getIgnorePatterns(customRoot = getProjectRoot()) {
   const patterns = new Set([
     "node_modules",
@@ -65,10 +62,12 @@ export function isIgnored(targetPath, customRoot = getProjectRoot()) {
     return true;
   }
 
+  if (base === ".npmrc" || base === ".pypirc") return true;
   // Always block internal repository metadata and credentials
   if (/(^|\/)\.git(\/|$)/i.test(normalized)) return true;
   if (/(^|\/)\.codemcp(\/|$)/i.test(normalized)) return true;
-  if (/\b(id_rsa|id_ecdsa|id_ed25519|credentials\.enc)\b/i.test(normalized)) return true;
+  if (/(^|\/)\.ssh(\/|$)/i.test(normalized)) return true;
+  if (/\b(id_rsa|id_dsa|id_ecdsa|id_ed25519|credentials\.enc)\b/i.test(normalized)) return true;
 
   const rel = toPosix(path.relative(customRoot, targetPath));
   const segments = rel.split("/").filter(Boolean);
@@ -92,6 +91,59 @@ export function getAllowedExtensions() {
     .filter(Boolean);
 }
 
+export function assertPathContained(targetPath, customRoot = getProjectRoot()) {
+  if (!targetPath || typeof targetPath !== "string" || !targetPath.trim()) {
+    throw new PathGuardError("Path is required", 400);
+  }
+
+  const clean = targetPath.trim();
+  if (clean.includes("\0")) {
+    throw new PathGuardError("Invalid path (null bytes detected)", 400);
+  }
+
+  const rootResolved = path.resolve(customRoot);
+  const resolved = path.isAbsolute(clean) ? path.resolve(clean) : path.resolve(rootResolved, clean);
+
+  // 1. Lexical boundary check
+  const relLexical = path.relative(rootResolved, resolved);
+  if (relLexical.startsWith("..") || path.isAbsolute(relLexical)) {
+    throw new PathGuardError("Path escapes project root", 403);
+  }
+
+  // 2. Canonical / symlink boundary check
+  let realRoot = rootResolved;
+  try {
+    if (fs.existsSync(rootResolved)) {
+      realRoot = fs.realpathSync(rootResolved);
+    }
+  } catch {}
+
+  let checkTarget = resolved;
+  let remainingSuffix = "";
+  while (checkTarget && !fs.existsSync(checkTarget)) {
+    const parent = path.dirname(checkTarget);
+    if (!parent || parent === checkTarget) break;
+    remainingSuffix = remainingSuffix ? path.join(path.basename(checkTarget), remainingSuffix) : path.basename(checkTarget);
+    checkTarget = parent;
+  }
+
+  if (fs.existsSync(checkTarget)) {
+    let realTarget;
+    try {
+      realTarget = fs.realpathSync(checkTarget);
+    } catch {
+      throw new PathGuardError("Unable to resolve canonical path", 403);
+    }
+    const finalCanonical = remainingSuffix ? path.join(realTarget, remainingSuffix) : realTarget;
+    const relReal = path.relative(realRoot, finalCanonical);
+    if (relReal.startsWith("..") || path.isAbsolute(relReal)) {
+      throw new PathGuardError("Path symlink escapes project root", 403);
+    }
+  }
+
+  return resolved;
+}
+
 export function resolveSafe(relativePath, customRoot = getProjectRoot()) {
   if (typeof relativePath !== "string" || relativePath.trim().length === 0) {
     throw new PathGuardError("Path is required", 400);
@@ -107,14 +159,7 @@ export function resolveSafe(relativePath, customRoot = getProjectRoot()) {
     throw new PathGuardError("Absolute paths are not allowed", 400);
   }
 
-  const resolved = path.resolve(customRoot, clean);
-  const relativeToRoot = path.relative(customRoot, resolved);
-
-  if (relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
-    throw new PathGuardError("Path escapes project root", 403);
-  }
-
-  return resolved;
+  return assertPathContained(clean, customRoot);
 }
 
 export function isAllowedFile(filePath) {
@@ -203,6 +248,24 @@ export function walk(dirAbsolute, dirRelative, results, customRoot = getProjectR
 }
 
 /**
+ * Detects if a buffer contains binary data (e.g. null byte in the first 1024 bytes).
+ * Follows the standard Git/ripgrep heuristic for detecting binary files regardless of extension.
+ *
+ * @param {Buffer|Uint8Array} buffer
+ * @returns {boolean}
+ */
+export function isBinaryBuffer(buffer) {
+  if (!buffer || buffer.length === 0) return false;
+  const checkLength = Math.min(buffer.length, 1024);
+  for (let i = 0; i < checkLength; i++) {
+    if (buffer[i] === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Creates a scoped PathGuard instance bound to a specific project root,
  * eliminating the need to drill customRoot through every helper call.
  *
@@ -213,10 +276,12 @@ export function createScopedPathGuard(customRoot = getProjectRoot()) {
   return {
     root,
     resolveSafe: (relPath) => resolveSafe(relPath, root),
+    assertPathContained: (targetPath) => assertPathContained(targetPath, root),
     assertExistsAndAllowed: (absPath) => assertExistsAndAllowed(absPath, root),
     isIgnored: (targetPath) => isIgnored(targetPath, root),
     walk: (dirAbs, dirRel, results) => walk(dirAbs, dirRel, results, root),
     getIgnorePatterns: () => getIgnorePatterns(root),
+    isBinaryBuffer,
   };
 }
 

@@ -49,6 +49,10 @@ function deriveEncryptionKey(saltStr = "codemcp-secure-vault-salt-v1") {
 function ensureVaultDir() {
   if (!fs.existsSync(VAULT_DIR)) {
     fs.mkdirSync(VAULT_DIR, { recursive: true, mode: 0o700 });
+  } else if (process.platform !== "win32") {
+    try {
+      fs.chmodSync(VAULT_DIR, 0o700);
+    } catch {}
   }
 }
 
@@ -124,6 +128,12 @@ function saveAllCredentials(creds) {
     encoding: "utf-8",
     mode: 0o600,
   });
+
+  if (process.platform !== "win32") {
+    try {
+      fs.chmodSync(VAULT_FILE, 0o600);
+    } catch {}
+  }
 }
 
 /**

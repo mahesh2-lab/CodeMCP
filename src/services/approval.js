@@ -37,23 +37,27 @@ export function isApprovalRequired(project, actionType) {
   return false;
 }
 
+let pendingApproval = Promise.resolve();
+
 /**
- * Requests interactive user approval in the terminal for a proposed file change or deletion.
+ * Requests interactive user approval in the terminal for a proposed file change, deletion, or command execution.
+ * Sequentially queues multiple concurrent approval requests so terminal prompts and stdin do not conflict.
  *
  * @param {object} options
- * @param {'WRITE'|'DELETE'} options.type
- * @param {string} options.path - Relative file path
- * @param {string} [options.oldContent] - Existing content before modification
- * @param {string} [options.newContent] - Proposed new content
- * @param {number} [options.size] - File size in bytes for delete action
- * @param {number} [options.newSize] - Expected written bytes for write action
- * @param {object} [options.project] - Project metadata
- * @param {number} [options.timeoutMs=900000] - Timeout in milliseconds before rejecting (default: 15 minutes)
  * @returns {Promise<{ approved: boolean, reason?: string }>}
  */
-export async function requestApproval({
+export function requestApproval(options) {
+  const run = () => promptApproval(options);
+  const next = pendingApproval.then(run, run);
+  pendingApproval = next.catch(() => {});
+  return next;
+}
+
+async function promptApproval({
   type,
-  path: relPath,
+  path: relPath = "",
+  command = "",
+  cwd = "",
   oldContent = "",
   newContent = "",
   size = 0,
@@ -61,11 +65,20 @@ export async function requestApproval({
   project = null,
   timeoutMs = parseInt(process.env.APPROVAL_TIMEOUT_MS, 10) || 15 * 60 * 1000,
 }) {
-  // If not a TTY terminal, we cannot prompt interactively
+  const displayTarget = type === "EXEC" ? command || relPath : relPath;
+
+  // If not a TTY terminal, check non-interactive policy
   if (!process.stdin.isTTY) {
+    const nonInteractivePolicy = (getEnv("APPROVAL_NON_INTERACTIVE", "auto") || "").toLowerCase();
+    if (nonInteractivePolicy === "reject" || nonInteractivePolicy === "deny" || nonInteractivePolicy === "false") {
+      return {
+        approved: false,
+        reason: "Action rejected: running in non-interactive environment with strict approval policy enabled.",
+      };
+    }
     console.warn(
       pc.yellow(
-        `[approval] Non-interactive environment detected. Auto-approving ${type} on ${relPath}`,
+        `[approval] Non-interactive environment detected. Auto-approving ${type} on ${displayTarget}`,
       ),
     );
     return { approved: true };
@@ -77,8 +90,8 @@ export async function requestApproval({
 
   const title = pc.yellow("⚠") + " " + pc.bold(pc.white("AI CHANGE APPROVAL REQUIRED"));
   const rows = [
-    pc.bold(pc.white(`${type} FILE`)),
-    pc.bold(pc.white(relPath)),
+    pc.bold(pc.white(type === "EXEC" ? "EXECUTE COMMAND" : `${type} FILE`)),
+    pc.bold(pc.white(displayTarget)),
   ];
 
   if (type === "WRITE") {
@@ -119,6 +132,12 @@ export async function requestApproval({
     rows.push("");
     rows.push(pc.yellow(" ⚠ This file will be permanently deleted from the workspace."));
     rows.push(pc.dim(`   Size: ${formatBytes(size)}`));
+  } else if (type === "EXEC") {
+    if (cwd) {
+      rows.push(pc.dim(`Directory: ${cwd}`));
+    }
+    rows.push("");
+    rows.push(pc.yellow(" ⚠ This process will execute directly in your project workspace."));
   }
 
   printApprovalBox(title, rows, 69);
@@ -142,15 +161,22 @@ export async function requestApproval({
   }
 
   function printPrompt() {
-    process.stdout.write(
-      pc.bold(pc.cyan("Apply changes? ")) +
-        `[${pc.green("y")}] Accept  [${pc.red("n")}] Reject  [${pc.cyan("d")}] Full diff  [${pc.cyan("q")}] Quit: `,
-    );
+    if (type === "WRITE") {
+      process.stdout.write(
+        pc.bold(pc.cyan("Apply changes? ")) +
+          `[${pc.green("y")}] Accept  [${pc.red("n")}] Reject  [${pc.cyan("d")}] Full diff  [${pc.cyan("q")}] Quit: `,
+      );
+    } else {
+      process.stdout.write(
+        pc.bold(pc.cyan("Execute action? ")) +
+          `[${pc.green("y")}] Accept  [${pc.red("n")}] Reject  [${pc.cyan("q")}] Quit: `,
+      );
+    }
   }
 
   notify({
     title: "Approval Required",
-    message: `${type === "WRITE" ? "Write" : "Delete"} request for ${relPath} needs confirmation in terminal`,
+    message: `${type === "EXEC" ? "Command" : type === "WRITE" ? "Write" : "Delete"} request for ${displayTarget} needs confirmation in terminal`,
   });
 
   return new Promise((resolve) => {
@@ -205,11 +231,33 @@ export async function requestApproval({
     function onKeypress(str, key) {
       if (answered) return;
 
-      // Ctrl + C to exit
-      if (key?.ctrl && key?.name === "c") {
+      // Ctrl + C to exit gracefully
+      const isCtrlC =
+        (key?.ctrl && key?.name === "c") ||
+        str === "\u0003" ||
+        str === "\x03" ||
+        key?.sequence === "\u0003";
+
+      if (isCtrlC) {
         cleanup();
         process.stdout.write("\n");
-        process.kill(process.pid, "SIGINT");
+        process.emit("SIGINT");
+        return;
+      }
+
+      // Ctrl + D to cancel prompt (EOF)
+      const isCtrlD =
+        (key?.ctrl && key?.name === "d") ||
+        str === "\u0004" ||
+        key?.sequence === "\u0004";
+
+      if (isCtrlD) {
+        cleanup();
+        process.stdout.write("\n");
+        resolve({
+          approved: false,
+          reason: "User cancelled review prompt (EOF)",
+        });
         return;
       }
 
@@ -268,13 +316,15 @@ export async function requestApproval({
 }
 
 /**
- * Verifies interactive user approval for WRITE or DELETE actions, logging rejections
+ * Verifies interactive user approval for WRITE, DELETE, or EXEC actions, logging rejections
  * and formatting error tool responses if rejected.
  *
  * @param {object} options
  * @param {object} options.project - Scoped project configuration
- * @param {'WRITE'|'DELETE'} options.actionType - Action type being performed
- * @param {string} options.path - Project-relative file path
+ * @param {'WRITE'|'DELETE'|'EXEC'} options.actionType - Action type being performed
+ * @param {string} [options.path] - Project-relative file path
+ * @param {string} [options.command] - Shell command for EXEC
+ * @param {string} [options.cwd] - Working directory for EXEC
  * @param {string} [options.oldContent=""] - Prior file content (for diff)
  * @param {string} [options.newContent=""] - New file content (for diff)
  * @param {number} [options.size=0] - File size in bytes for deletion
@@ -284,7 +334,9 @@ export async function requestApproval({
 export async function verifyActionApproval({
   project,
   actionType,
-  path: relPath,
+  path: relPath = "",
+  command = "",
+  cwd = "",
   oldContent = "",
   newContent = "",
   size = 0,
@@ -300,6 +352,8 @@ export async function verifyActionApproval({
   const approval = await requestApproval({
     type: actionType,
     path: relPath,
+    command,
+    cwd,
     oldContent,
     newContent,
     size,
@@ -311,12 +365,20 @@ export async function verifyActionApproval({
     const defaultReason =
       actionType === "WRITE"
         ? "User rejected this file modification."
-        : "User rejected this deletion.";
+        : actionType === "EXEC"
+          ? "User rejected this command execution."
+          : "User rejected this deletion.";
     const reason = approval.reason || defaultReason;
+    const targetLabel = actionType === "EXEC" ? command || relPath : relPath;
     if (activeLogger?.rejected) {
-      activeLogger.rejected(actionType, relPath, reason);
+      activeLogger.rejected(actionType, targetLabel, reason);
     }
-    const label = actionType === "WRITE" ? "Changes" : "File deletion";
+    const label =
+      actionType === "WRITE"
+        ? "Changes"
+        : actionType === "EXEC"
+          ? "Command execution"
+          : "File deletion";
     return {
       approved: false,
       rejectionResponse: {
@@ -333,6 +395,7 @@ export async function verifyActionApproval({
 
   return { approved: true };
 }
+
 
 export default {
   isApprovalRequired,

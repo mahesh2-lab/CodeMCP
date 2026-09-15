@@ -10,7 +10,7 @@
   "bugs": {
     "url": "https://github.com/mahesh2-lab/CodeMCP/issues"
   },
-  "main": "dist/server.js",
+  "main": "dist/cli.js",
   "type": "module",
   "bin": {
     "codemcp": "dist/cli.js",
@@ -24,9 +24,10 @@
     "LICENSE"
   ],
   "scripts": {
-    "start": "node dist/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "node scripts/test-client.js",
+    "start": "node dist/cli.js",
+    "dev": "node --watch bin/cli.js",
+    "test": "node --test tests/**/*.test.js",
+    "test:integration": "node scripts/test-client.js",
     "compile": "node scripts/build.js",
     "build": "node scripts/build.js",
     "prepublishOnly": "npm run build"
@@ -64,7 +65,6 @@
     "qs": "^6.16.0"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2",
-    "javascript-obfuscator": "^5.7.0"
+    "esbuild": "^0.28.2"
   }
 }

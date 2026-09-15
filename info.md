@@ -739,32 +739,19 @@ Apply changes? [y] Accept  [n] Reject  [d] Full diff  [q] Quit: y
 
 Located in `scripts/build.js`.
 
-The project is compiled into self-contained, obfuscated distributable files in `dist/` before publishing to NPM.
+The project is compiled into a unified distributable bundle in `dist/cli.js` (with a backwards-compatible `dist/server.js` export) before publishing to NPM.
 
 ### 1. Bundling with `esbuild` (`^0.28.2`)
-- **Server Bundle**: `src/server.js` -> `dist/server.js`
+- **Unified Bundle**: `bin/cli.js` -> `dist/cli.js`
+  - Bundles both CLI command dispatching and the full MCP/Express server runtime into one standalone file.
   - Target: `node18`
   - Format: `esm`
   - Packages: `external` (all dependencies from `package.json` kept external)
   - Banner: `import { createRequire } from "node:module"; const require = createRequire(import.meta.url);`
-- **CLI Bundle**: `bin/cli.js` -> `dist/cli.js`
-  - External: All dependencies + `./server.js`
+- **Compatibility Wrapper**: `dist/server.js` re-exports `dist/cli.js` for backwards compatibility.
 
-### 2. Obfuscation with `javascript-obfuscator` (`^5.7.0`)
-Applied to both `dist/server.js` and `dist/cli.js` with settings:
-- `controlFlowFlattening: true` (threshold: `0.75`)
-- `identifierNamesGenerator: "hexadecimal"`
-- `numbersToExpressions: true`
-- `simplify: true`
-- `splitStrings: true` (chunk length: `10`)
-- `stringArray: true`
-- `stringArrayCallsTransform: true`
-- `stringArrayEncoding: ["base64", "rc4"]`
-- `stringArrayThreshold: 0.8`
-
-### 3. Shebang & Execution Permissions
-- Strips any existing shebang before obfuscating `dist/cli.js`.
-- Prepends `#!/usr/bin/env node\n`.
+### 2. Shebang & Execution Permissions
+- Ensures `dist/cli.js` starts with `#!/usr/bin/env node\n`.
 - Sets file mode to executable: `0o755`.
 
 ---

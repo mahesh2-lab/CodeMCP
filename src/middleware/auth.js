@@ -1,34 +1,64 @@
-import { getProjectByKey, getActiveProject } from "../services/projects.js";
-import { getEnv } from "../utils/env.js";
+import { verifyAccessToken, getBaseUrl, getClient } from "../services/oauth.js";
+import { logger } from "../utils/logger.js";
 
-export function checkAuth(req, res, next) {
-  const configuredKey = getEnv("API_KEY");
+/**
+ * Express middleware that enforces Bearer token authentication on protected MCP routes.
+ * Rejects unauthenticated requests with 401 and an RFC 9728 WWW-Authenticate header.
+ */
+export function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const baseUrl = getBaseUrl(req);
+  const resourceMetadataUrl = `${baseUrl}/.well-known/oauth-protected-resource`;
 
-  // If no API_KEY is set in environment or secure vault, allow requests through
-  if (!configuredKey) {
-    req.project = getActiveProject();
-    return next();
+  if (!authHeader || typeof authHeader !== "string") {
+    res.setHeader(
+      "WWW-Authenticate",
+      `Bearer resource_metadata="${resourceMetadataUrl}", error="unauthorized"`
+    );
+    return res.status(401).json({
+      error: "unauthorized",
+      message: "Bearer token required to access this resource",
+    });
   }
 
-  const authHeader = req.headers["authorization"] || "";
   const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  const token = match ? match[1].trim() : null;
-
-  if (!token) {
-    return res
-      .status(401)
-      .json({ error: "Missing Authorization Bearer header" });
+  if (!match) {
+    res.setHeader(
+      "WWW-Authenticate",
+      `Bearer resource_metadata="${resourceMetadataUrl}", error="invalid_token", error_description="Bearer scheme required"`
+    );
+    return res.status(401).json({
+      error: "invalid_token",
+      message: "Authorization header must use Bearer scheme",
+    });
   }
 
-  const project = getProjectByKey(token);
-  if (!project) {
-    return res
-      .status(401)
-      .json({ error: "Invalid API key" });
+  const token = match[1].trim();
+  const result = verifyAccessToken(token);
+
+  if (!result.valid) {
+    res.setHeader(
+      "WWW-Authenticate",
+      `Bearer resource_metadata="${resourceMetadataUrl}", error="invalid_token", error_description="${result.error || "Token invalid"}"`
+    );
+    return res.status(401).json({
+      error: "invalid_token",
+      message: result.error || "Invalid or expired access token",
+    });
   }
 
-  req.project = project;
+  req.user = result.payload;
+
+  if (req.user?.client_id) {
+    const registered = getClient(req.user.client_id);
+    if (registered?.client_name) {
+      logger.setActiveClient(registered.client_name);
+    } else {
+      logger.setActiveClient(req.user.client_id.slice(0, 8));
+    }
+  }
+
   return next();
 }
 
-export default checkAuth;
+export default requireAuth;

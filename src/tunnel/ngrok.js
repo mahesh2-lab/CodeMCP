@@ -4,6 +4,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { logger } from "../utils/logger.js";
 import { getEnv, setEnv } from "../utils/env.js";
+import { deleteCredential } from "../utils/credentials.js";
 
 function getHeaders(apiKey) {
   return {
@@ -11,6 +12,36 @@ function getHeaders(apiKey) {
     "ngrok-version": "2",
     "Content-Type": "application/json",
   };
+}
+
+/**
+ * Validates an ngrok API key by making a test request to the ngrok API.
+ *
+ * @param {string} apiKey - The ngrok API key to validate
+ * @returns {Promise<{ ok: boolean, error?: string }>}
+ */
+export async function validateApiKey(apiKey) {
+  const key = apiKey?.trim();
+  if (!key) {
+    return { ok: false, error: "API key cannot be empty" };
+  }
+
+  try {
+    const res = await fetch("https://api.ngrok.com/api_keys?limit=1", {
+      method: "GET",
+      headers: getHeaders(key),
+    });
+
+    if (res.ok) {
+      return { ok: true };
+    }
+
+    const data = await res.json().catch(() => ({}));
+    const errorMsg = data?.msg || `ngrok API returned HTTP ${res.status}`;
+    return { ok: false, error: errorMsg };
+  } catch (err) {
+    return { ok: false, error: `Failed to connect to ngrok API: ${err.message}` };
+  }
 }
 
 export function openBrowser(url) {
@@ -28,56 +59,81 @@ export function openBrowser(url) {
 let cachedApiKey = null;
 
 /**
- * Checks for NGROK_API_KEY. If missing, opens dashboard in browser and prompts user to paste key.
+ * Checks for NGROK_API_KEY, verifies that it works, and prompts the user if missing or invalid.
  */
 export async function ensureApiKey() {
   if (cachedApiKey) return cachedApiKey;
 
   let apiKey = getEnv("NGROK_API_KEY");
   if (apiKey) {
-    cachedApiKey = apiKey;
-    return apiKey;
+    const check = await validateApiKey(apiKey);
+    if (check.ok) {
+      cachedApiKey = apiKey;
+      return apiKey;
+    }
+    logger.tunnelWarn(`Stored NGROK_API_KEY is not working: ${check.error}. Re-authenticating...`);
+    deleteCredential("NGROK_API_KEY");
+    apiKey = null;
   }
 
   const url = "https://dashboard.ngrok.com/api-keys";
-  console.log(`\nOpening ${pc.cyan(url)} in your browser to create an API key...\n`);
+  console.log(`\nOpening ${pc.cyan(url)} in your browser to create or view your API key...\n`);
 
   openBrowser(url);
 
-  if (process.stdin.isTTY) {
-    const inputKey = await p.password({
-      message: "Paste your ngrok API Key here:",
-      validate: (val) => (!val?.trim() ? "API key is required" : undefined),
-    });
+  while (!apiKey) {
+    let inputKey = "";
 
-    if (p.isCancel(inputKey) || !inputKey?.trim()) {
-      p.cancel("Setup cancelled. Missing NGROK_API_KEY.");
-      console.log(pc.dim("  Tip: To run locally without a public tunnel, use: ") + pc.cyan("codemcp --no-tunnel\n"));
-      process.exit(0);
+    if (process.stdin.isTTY) {
+      const response = await p.password({
+        message: "Paste your ngrok API Key here:",
+        validate: (val) => (!val?.trim() ? "API key is required" : undefined),
+      });
+
+      if (p.isCancel(response) || !response?.trim()) {
+        p.cancel("Setup cancelled. Missing NGROK_API_KEY.");
+        console.log(pc.dim("  Tip: To run locally without a public tunnel, use: ") + pc.cyan("codemcp --no-tunnel\n"));
+        process.exit(0);
+      }
+
+      inputKey = response.trim();
+    } else {
+      const readline = await import("node:readline/promises");
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const response = await rl.question("Paste your ngrok API Key here: ");
+      rl.close();
+      if (!response?.trim()) {
+        console.log(pc.yellow("Setup cancelled. Missing NGROK_API_KEY."));
+        console.log(pc.dim("  Tip: To run locally without a public tunnel, use: ") + pc.cyan("codemcp --no-tunnel\n"));
+        process.exit(0);
+      }
+      inputKey = response.trim();
     }
 
-    apiKey = inputKey.trim();
-  } else {
-    const readline = await import("node:readline/promises");
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const input = await rl.question("Paste your ngrok API Key here: ");
-    rl.close();
-    if (!input?.trim()) {
-      console.log(pc.yellow("Setup cancelled. Missing NGROK_API_KEY."));
-      console.log(pc.dim("  Tip: To run locally without a public tunnel, use: ") + pc.cyan("codemcp --no-tunnel\n"));
-      process.exit(0);
-    }
-    apiKey = input?.trim();
-  }
+    const spinner = process.stdin.isTTY ? p.spinner() : null;
+    spinner?.start("Verifying ngrok API key with ngrok.com...");
 
-  if (apiKey) {
-    cachedApiKey = apiKey;
-    setEnv("NGROK_API_KEY", apiKey);
-    logger.tunnelInfo("Saved NGROK_API_KEY to secure user vault (~/.codemcp/credentials.enc)");
+    const check = await validateApiKey(inputKey);
+
+    if (check.ok) {
+      spinner?.stop(pc.green("✔ ngrok API key verified successfully!"));
+      apiKey = inputKey;
+      cachedApiKey = apiKey;
+      setEnv("NGROK_API_KEY", apiKey);
+      logger.tunnelInfo("Saved valid NGROK_API_KEY to secure user vault (~/.codemcp/credentials.enc)");
+    } else {
+      spinner?.stop(pc.red(`✖ Invalid ngrok API key: ${check.error}`));
+      if (!process.stdin.isTTY) {
+        console.error(pc.red(`[ngrok] API key validation failed: ${check.error}`));
+        process.exit(1);
+      }
+      console.log(pc.yellow("  Please check your key at https://dashboard.ngrok.com/api-keys and try again.\n"));
+    }
   }
 
   return apiKey;
 }
+
 
 
 /**

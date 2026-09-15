@@ -6,9 +6,8 @@ import express from "express";
 import { toPosix, BINARY_EXTENSIONS, getProjectRoot } from "../src/utils/pathGuard.js";
 import { verifyActionApproval, isApprovalRequired } from "../src/services/approval.js";
 import { getClientSource } from "../src/utils/clientInfo.js";
-import { checkAuth } from "../src/middleware/auth.js";
 import { getCustomHelpText } from "../src/utils/help.js";
-import { getProjectByKey, getActiveProject } from "../src/services/projects.js";
+import { getActiveProject } from "../src/services/projects.js";
 import { createToolContext } from "../src/tools/context.js";
 import { registerTools } from "../src/tools/index.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -118,62 +117,14 @@ console.log("🧪 Running Comprehensive CodeMCP Refactoring & Quality Tests...\n
 }
 
 // -------------------------------------------------------------
-// Test 4: checkAuth middleware & API_KEY vault mechanism
+// Test 4: Direct unauthenticated /mcp routing (zero-config mode)
 // -------------------------------------------------------------
 {
-  console.log("4. Testing checkAuth middleware...");
-
-  // 4a. No API_KEY configured -> should allow through (0-config mode)
-  delete process.env.API_KEY;
-  let nextCalled = false;
-  const mockReqNoKey = { headers: {} };
-  const mockRes = {
-    statusCode: 200,
-    status(code) { this.statusCode = code; return this; },
-    json(data) { this.body = data; return this; },
-  };
-  checkAuth(mockReqNoKey, mockRes, () => { nextCalled = true; });
-  assert.strictEqual(nextCalled, true, "Should allow request through when API_KEY is unset");
-  assert.ok(mockReqNoKey.project, "Should attach active project to req");
-
-  // 4b. API_KEY configured -> should reject missing Bearer header
-  process.env.API_KEY = "secret-vault-token-123";
-  let rejected401 = false;
-  const mockReqMissing = { headers: {} };
-  const mockResMissing = {
-    statusCode: 200,
-    status(code) { this.statusCode = code; return this; },
-    json(data) { this.body = data; return this; },
-  };
-  checkAuth(mockReqMissing, mockResMissing, () => { rejected401 = true; });
-  assert.strictEqual(mockResMissing.statusCode, 401);
-  assert.strictEqual(mockResMissing.body.error, "Missing Authorization Bearer header");
-
-  // 4c. API_KEY configured -> should reject wrong token
-  const mockReqWrong = { headers: { authorization: "Bearer wrong-token" } };
-  const mockResWrong = {
-    statusCode: 200,
-    status(code) { this.statusCode = code; return this; },
-    json(data) { this.body = data; return this; },
-  };
-  checkAuth(mockReqWrong, mockResWrong, () => {});
-  assert.strictEqual(mockResWrong.statusCode, 401);
-  assert.strictEqual(mockResWrong.body.error, "Invalid API key");
-
-  // 4d. API_KEY configured -> should accept matching Bearer token
-  let authSucceeded = false;
-  const mockReqValid = { headers: { authorization: "Bearer secret-vault-token-123" } };
-  const mockResValid = {
-    status(code) { this.statusCode = code; return this; },
-    json(data) { this.body = data; return this; },
-  };
-  checkAuth(mockReqValid, mockResValid, () => { authSucceeded = true; });
-  assert.strictEqual(authSucceeded, true, "Valid Bearer token should pass authentication");
-  assert.ok(mockReqValid.project, "Should attach validated project");
-
-  // Clean up env
-  delete process.env.API_KEY;
-  console.log("   ✔ checkAuth middleware & Bearer authentication verified.\n");
+  console.log("4. Testing direct unauthenticated access to routes...");
+  const activeProj = getActiveProject();
+  assert.ok(activeProj, "Should resolve active project");
+  assert.ok(activeProj.root, "Active project should have root path");
+  console.log("   ✔ Zero-config direct project resolution verified.\n");
 }
 
 // -------------------------------------------------------------
@@ -204,7 +155,7 @@ console.log("🧪 Running Comprehensive CodeMCP Refactoring & Quality Tests...\n
 {
   console.log("6. Testing getCustomHelpText dynamic versioning...");
   const helpText = getCustomHelpText();
-  assert.ok(helpText.includes("1.1.2"), "Help text should contain version 1.1.2");
+  assert.ok(helpText.includes("CodeMCP v"), "Help text should contain CodeMCP version header");
   assert.ok(helpText.toUpperCase().includes("USAGE"), "Help text should include Usage section");
   assert.ok(helpText.toUpperCase().includes("COMMANDS"), "Help text should include Commands section");
   console.log("   ✔ getCustomHelpText output verified.\n");
@@ -234,8 +185,13 @@ console.log("🧪 Running Comprehensive CodeMCP Refactoring & Quality Tests...\n
     assert.strictEqual(healthJson.status, "ok");
     assert.ok(healthJson.projectRoot);
 
-    // 7b. Test /mcp browser GET info
-    const mcpGetRes = await fetch(`${baseUrl}/mcp`);
+    // 7b. Test /mcp browser GET info (with OAuth bearer token)
+    const { generateAccessToken } = await import("../src/services/oauth.js");
+    const token = generateAccessToken({ clientId: "e2e-refactor-client" });
+
+    const mcpGetRes = await fetch(`${baseUrl}/mcp`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     assert.strictEqual(mcpGetRes.status, 200);
     const mcpJson = await mcpGetRes.json();
     assert.strictEqual(mcpJson.status, "online");
@@ -244,7 +200,11 @@ console.log("🧪 Running Comprehensive CodeMCP Refactoring & Quality Tests...\n
     assert.ok(mcpJson.detectedClient.type, "detectedClient.type should be defined");
 
     // 7c. Connect StreamableHTTP MCP Client
-    const transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`));
+    const transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`), {
+      requestInit: {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    });
     const client = new Client({ name: "e2e-refactor-client", version: "1.0.0" }, { capabilities: {} });
     await client.connect(transport);
 

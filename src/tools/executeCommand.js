@@ -1,174 +1,379 @@
-import { exec } from "node:child_process";
+import { execFile, exec } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { logger } from "../utils/logger.js";
 import { getEnv } from "../utils/env.js";
-import { PathGuardError } from "../utils/pathGuard.js";
+import { PathGuardError, assertPathContained, isIgnored } from "../utils/pathGuard.js";
 import { recordAction } from "../services/memory.js";
+import { isApprovalRequired, verifyActionApproval } from "../services/approval.js";
 import { createToolContext, wrapToolHandler } from "./context.js";
 
 /**
- * Standard security blacklist rules preventing destructive operations,
- * directory traversal, credential leakage, and privilege escalation.
+ * Explicit default allowlist of permitted developer binaries.
+ * No arbitrary commands or system shells can be executed.
  */
-const RESTRICTED_RULES = [
-  { pattern: /(^|[\s"'`\/\\=])\.\.([\/\\]|[\s"'`=]|$)/, reason: "Directory traversal (..) outside project scope prohibited", },
-  { pattern: /\b(cd|chdir|pushd)\s+([a-zA-Z]:[/\\]?|[/~\\\$%]|(\.\.))/i, reason: "Changing directory outside project folder prohibited", },
-  { pattern: /(^|[\s"'`=])(~[\/\\]|\$HOME\b|%USERPROFILE%|%APPDATA%|%LOCALAPPDATA%|%WINDIR%|%SYSTEMROOT%)/i, reason: "Accessing user/system path outside project directory prohibited", },
-  { pattern: /(^|[\s"'`=])\/(etc|var|usr|bin|sbin|root|home|opt|boot|dev|sys|proc)\b/i, reason: "System directory access prohibited", },
-  { pattern: /(^|[\s"'`\/\\=])\.env(\.[a-zA-Z0-9_.-]+)?(\b|[\s"'`\/\\=]|$)/i, reason: "Sensitive file access prohibited (.env)", },
-  { pattern: /\b(id_rsa|id_ecdsa|id_ed25519|\.codemcp|credentials\.enc|\.aws[\/\\]credentials|\.ssh[\/\\]|\/etc\/shadow|\/etc\/passwd)\b/i, reason: "Credentials and sensitive key access prohibited", },
-  { pattern: /(^|[\s"'`\/\\=])\.git[\/\\](config|credentials|HEAD|hooks|objects)/i, reason: "Internal git repository configuration access prohibited", },
-  { pattern: /\b(rmdir|rd)\s+.*\/s/i, reason: "Recursive directory deletion prohibited", },
-  { pattern: /\bdel\s+.*\/f\s+\/s/i, reason: "Forceful recursive file deletion prohibited", },
-  { pattern: /\b(del|erase)\s+.*(\*|\/s|\/f)/i, reason: "Broad or recursive file deletion prohibited", },
-  { pattern: /\b(del|rmdir|rd)\s+.*[a-zA-Z]:\\/i, reason: "Drive root deletion prohibited", },
-  { pattern: /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f*|-f*r)\s+([\/~*.]|(\.\.))/i, reason: "Broad recursive deletion prohibited", },
-  { pattern: /\b(format|diskpart|bcdedit|chkdsk|fdisk|mkfs|parted)\b/i, reason: "Drive formatting and disk partitioning prohibited", },
-  { pattern: /\b(mkfs|dd\s+if=)\b/i, reason: "Low-level disk modification prohibited", },
-  { pattern: /\b(shutdown|restart-computer|stop-computer|reboot|halt|poweroff|init\s+[06])\b/i, reason: "System power command prohibited", },
-  { pattern: /\b(reg\s+(add|delete|import|restore)|regedit)\b/i, reason: "Registry modification prohibited", },
-  { pattern: /\b(net\s+user|net\s+localgroup|useradd|usermod|userdel|groupadd)\b/i, reason: "User account modification prohibited", },
-  { pattern: /\b(sudo|runas|doas|pbrun|su\s+-|su\s+[a-zA-Z0-9_-]+)\b/i, reason: "Privilege escalation / superuser execution prohibited", },
-  { pattern: /\b(sc\s+(create|delete|config|start|stop)|systemctl\s+(stop|disable|restart|mask)|service\s+\w+\s+(stop|restart))\b/i, reason: "System service manipulation prohibited", },
-  { pattern: /\b(curl|wget)\b.*\|\s*(sh|bash|zsh|cmd|powershell|pwsh)\b/i, reason: "Piping remote script into shell execution prohibited", },
-  { pattern: /\b(Invoke-WebRequest|iwr|curl)\b.*\|\s*(iex|Invoke-Expression)\b/i, reason: "Remote script execution prohibited", },
-  { pattern: /\bpowershell.*(-enc|-encodedcommand|-executionpolicy\s+bypass|-ep\s+bypass)\b/i, reason: "PowerShell execution policy bypass or encoded execution prohibited", },
-  { pattern: /\b(nc|ncat|netcat)\s+.*-e\b/i, reason: "Network shell binding prohibited", },
-  { pattern: /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, reason: "Fork bomb prohibited", },
+export const DEFAULT_ALLOWED_BINARIES = new Set([
+  "git",
+  "npm",
+  "npx",
+  "pnpm",
+  "yarn",
+  "node",
+  "python",
+  "python3",
+  "pip",
+  "pytest",
+  "cargo",
+  "rustc",
+  "go",
+  "tsc",
+  "esbuild",
+  "vitest",
+  "jest",
+  "rg",
+]);
+
+/**
+ * Explicit allowlist of environment variable names exposed to executed processes.
+ * Denylisting is strictly prohibited to prevent credential leakage.
+ */
+export const DEFAULT_ALLOWED_ENV_VARS = [
+  "PATH",
+  "NODE_ENV",
+  "PROJECT_ROOT",
+  "HOME",
+  "USER",
+  "LANG",
+  "LC_ALL",
+  "SHELL",
+  "SYSTEMROOT",
+  "WINDIR",
+  "COMSPEC",
+  "PATHEXT",
+  "TEMP",
+  "TMP",
 ];
 
 /**
- * Validates command against project boundary policies, security rules, and system capabilities.
+ * Constructs a clean environment containing strictly allowlisted variables.
  *
- * @param {string} command - Shell command to validate
- * @param {string} projectRoot - Absolute path to project root
- * @returns {{ ok: boolean, shell?: string, systemInfo?: object, resolvedRoot?: string, error?: string, reason?: string }}
+ * @param {string} cwd - Resolved working directory
+ * @param {string[]} [customAllowed=[]] - Additional allowlisted variable names
+ * @returns {object}
  */
-function validateSystemAndCommand(command, projectRoot) {
-  const isWindows = process.platform === "win32";
+export function buildCleanEnv(cwd, customAllowed = []) {
+  const envConfigured = getEnv("ALLOWED_ENV_VARS", "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
-  if (!command || typeof command !== "string" || !command.trim()) {
-    return { ok: false, error: "Command is required", reason: "Empty command" };
-  }
+  const allowedSet = new Set([
+    ...DEFAULT_ALLOWED_ENV_VARS.map((v) => v.toLowerCase()),
+    ...envConfigured.map((v) => v.toLowerCase()),
+    ...customAllowed.map((v) => v.toLowerCase()),
+  ]);
 
-  // 1. Verify project directory exists and is a directory
-  if (!projectRoot || typeof projectRoot !== "string") {
-    return { ok: false, error: "Invalid project root directory", reason: "Invalid directory" };
-  }
-
-  const resolvedRoot = path.resolve(projectRoot);
-  if (!fs.existsSync(resolvedRoot)) {
-    return { ok: false, error: "Project root directory does not exist", reason: "Directory not found" };
-  }
-
-  try {
-    const stat = fs.statSync(resolvedRoot);
-    if (!stat.isDirectory()) {
-      return { ok: false, error: "Project root is not a directory", reason: "Not a directory" };
-    }
-  } catch {
-    return { ok: false, error: "Cannot access project root directory", reason: "Directory inaccessible" };
-  }
-
-  // 2. Check security blacklist rules
-  for (const rule of RESTRICTED_RULES) {
-    if (rule.pattern.test(command)) {
-      return {
-        ok: false,
-        reason: rule.reason,
-        error: `Command blocked by security policy (${rule.reason})`,
-      };
+  const cleanEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (allowedSet.has(key.toLowerCase())) {
+      cleanEnv[key] = value;
     }
   }
 
-  // 3. Verify absolute path references are scoped strictly inside project root
-  const absPathPattern = isWindows
-    ? /[a-zA-Z]:[/\\][^\s"'`<>|;&]*/g
-    : /(?:^|[\s"'`=])(\/[^\s"'`<>|;&]*)/g;
-
-  let match;
-  while ((match = absPathPattern.exec(command)) !== null) {
-    const rawTarget = (match[1] || match[0]).trim();
-    if (!rawTarget) continue;
-    try {
-      const resolvedTarget = path.resolve(rawTarget);
-      const relative = path.relative(resolvedRoot, resolvedTarget);
-      if (relative.startsWith("..") || path.isAbsolute(relative)) {
-        return {
-          ok: false,
-          reason: "Out-of-scope path access",
-          error: `Command references path outside project folder (${rawTarget})`,
-        };
-      }
-    } catch {
-      // Ignore unresolvable path tokens
-    }
-  }
-
-  // 4. Detect system shell
-  const shell = isWindows
-    ? getEnv("COMSPEC", "cmd.exe")
-    : getEnv("SHELL", "/bin/sh");
-
-  const systemInfo = {
-    platform: process.platform,
-    arch: process.arch,
-    nodeVersion: process.version,
-    shell: path.basename(shell),
-    freeMemMB: Math.round(os.freemem() / (1024 * 1024)),
-    totalMemMB: Math.round(os.totalmem() / (1024 * 1024)),
-    resolvedRoot,
-  };
-
-  return { ok: true, shell, systemInfo, resolvedRoot };
+  cleanEnv.PROJECT_ROOT = cwd;
+  return cleanEnv;
 }
 
 /**
- * Executes a sanitized shell command with timeout, output buffer capping,
- * and platform-specific process group cleanup on timeout.
+ * Returns the set of all allowed binaries, combining defaults with configuration.
  *
- * @param {object} options
- * @param {string} options.command - The raw command string to execute
- * @param {string} options.cwd - Working directory
- * @param {number} options.timeout - Timeout in milliseconds
- * @returns {Promise<{ stdout: string, stderr: string, exitCode: number, duration: number, isTimedOut: boolean }>}
+ * @param {object} [project]
+ * @returns {Set<string>}
  */
-function runCommandWithTimeout({ command, cwd, timeout }) {
-  const startTime = Date.now();
-  const execEnv = { ...process.env, PROJECT_ROOT: cwd };
+export function getAllowedBinaries(project = null) {
+  const allowed = new Set(DEFAULT_ALLOWED_BINARIES);
 
-  // Strip sensitive credentials, cloud keys, and access tokens to prevent leakage
-  const sensitivePattern = /(API_KEY|AUTH|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_KEY|GITHUB|AWS|NPM|CODEMCP)/i;
-  for (const key of Object.keys(execEnv)) {
-    if (sensitivePattern.test(key)) {
-      delete execEnv[key];
+  const envBinaries = getEnv("ALLOWED_COMMANDS", "") || getEnv("ALLOWED_BINARIES", "");
+  if (envBinaries) {
+    for (const b of envBinaries.split(",")) {
+      const clean = b.trim().toLowerCase();
+      if (clean) allowed.add(clean);
     }
   }
 
+  if (Array.isArray(project?.allowedCommands)) {
+    for (const b of project.allowedCommands) {
+      const clean = String(b).trim().toLowerCase();
+      if (clean) allowed.add(clean);
+    }
+  }
+
+  return allowed;
+}
+
+/**
+ * Tokenizes a command string safely without invoking a shell.
+ * Respects single and double quotes, and rejects shell metacharacters.
+ *
+ * @param {string} cmdStr
+ * @returns {string[]} Array of argument tokens
+ */
+export function tokenizeCommand(cmdStr) {
+  if (!cmdStr || typeof cmdStr !== "string" || !cmdStr.trim()) {
+    throw new PathGuardError("Command is required", 400);
+  }
+
+  // Reject shell chaining, redirection, and variable substitution characters
+  const forbiddenShellChars = /[|;&><`$\n\r]/;
+  if (forbiddenShellChars.test(cmdStr)) {
+    throw new PathGuardError(
+      "Command contains prohibited shell operators (|, &, ;, >, <, $, `). Raw shell parsing is disabled.",
+      403
+    );
+  }
+
+  const tokens = [];
+  let current = "";
+  let inDoubleQuote = false;
+  let inSingleQuote = false;
+  let isEscaped = false;
+
+  for (let i = 0; i < cmdStr.length; i++) {
+    const char = cmdStr[i];
+
+    if (isEscaped) {
+      current += char;
+      isEscaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      isEscaped = true;
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+
+    if (/\s/.test(char) && !inDoubleQuote && !inSingleQuote) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (inDoubleQuote || inSingleQuote) {
+    throw new PathGuardError("Unmatched quote in command string", 400);
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  if (tokens.length === 0) {
+    throw new PathGuardError("Empty command", 400);
+  }
+
+  return tokens;
+}
+
+/**
+ * Validates binary and argument tokens against allowlist, security policies,
+ * and PathGuard containment.
+ *
+ * @param {string} binary
+ * @param {string[]} args
+ * @param {string} projectRoot
+ * @param {object} [project]
+ */
+export function validateExecution(binary, args, projectRoot, project = null) {
+  if (!binary || typeof binary !== "string") {
+    throw new PathGuardError("Invalid executable binary", 400);
+  }
+
+  // Prohibit directory separators in binary name
+  if (binary.includes("/") || binary.includes("\\") || binary.includes(":")) {
+    throw new PathGuardError(
+      "Direct binary path execution is prohibited. Specify only the executable name from the allowlist.",
+      403
+    );
+  }
+
+  // Normalize binary name (strip Windows extension if present)
+  const baseBinary = binary.replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
+  const allowedBinaries = getAllowedBinaries(project);
+
+  if (!allowedBinaries.has(baseBinary)) {
+    throw new PathGuardError(
+      `Binary "${binary}" is not in the permitted allowlist. Permitted: ${Array.from(allowedBinaries).join(", ")}`,
+      403
+    );
+  }
+
+  // Prohibit dangerous runtime evaluation flags
+  if (baseBinary === "node") {
+    for (const arg of args) {
+      if (
+        arg === "-e" ||
+        arg.startsWith("-e") ||
+        arg === "--eval" ||
+        arg.startsWith("--eval=") ||
+        arg === "-p" ||
+        arg.startsWith("-p") ||
+        arg === "--print" ||
+        arg.startsWith("--print=")
+      ) {
+        throw new PathGuardError(
+          `Inline node evaluation flag "${arg}" is prohibited. Execute a script file inside the project instead.`,
+          403
+        );
+      }
+    }
+  }
+
+  if (baseBinary === "python" || baseBinary === "python3") {
+    for (const arg of args) {
+      if (arg === "-c" || arg.startsWith("-c")) {
+        throw new PathGuardError(
+          `Inline python code execution flag "-c" is prohibited. Execute a script file inside the project instead.`,
+          403
+        );
+      }
+    }
+  }
+
+  if (baseBinary === "git") {
+    for (const arg of args) {
+      if (
+        arg.startsWith("-c") ||
+        arg.startsWith("--exec-path") ||
+        arg.startsWith("--upload-pack") ||
+        arg.startsWith("--config-env")
+      ) {
+        throw new PathGuardError(
+          `Unsafe git configuration flag "${arg}" is prohibited.`,
+          403
+        );
+      }
+    }
+  }
+
+  // Validate path arguments: any token referencing a path or file must stay inside projectRoot
+  for (const arg of args) {
+    // If flag with value like --output=path/to/file or -f=path
+    let targetPath = arg;
+    if (arg.startsWith("--") && arg.includes("=")) {
+      targetPath = arg.slice(arg.indexOf("=") + 1);
+    }
+
+    // Prohibit sensitive credentials, key files, or .env anywhere in arguments
+    if (
+      /(^|[\s"'`\/\\=])\.env(\.[a-zA-Z0-9_.-]+)?(\b|[\s"'`\/\\=]|$)/i.test(targetPath) ||
+      /(^|[\s"'`\/\\=])(\.npmrc|\.pypirc)(\b|[\s"'`\/\\=]|$)/i.test(targetPath) ||
+      /(^|[\s"'`\/\\=])\.ssh(\b|[\s"'`\/\\=]|$)/i.test(targetPath) ||
+      /\b(id_rsa|id_dsa|id_ecdsa|id_ed25519|\.codemcp|credentials\.enc)\b/i.test(targetPath)
+    ) {
+      throw new PathGuardError(
+        `Access to protected or sensitive path "${targetPath}" is blocked`,
+        403
+      );
+    }
+
+    const looksLikePath =
+      targetPath.startsWith(".") ||
+      targetPath.startsWith("/") ||
+      targetPath.includes("/") ||
+      targetPath.includes("\\") ||
+      /^[a-zA-Z]:/.test(targetPath) ||
+      /\.(js|ts|mjs|cjs|json|py|rs|go|md|txt|html|css|yaml|yml|env)$/i.test(targetPath);
+
+    if (looksLikePath) {
+      try {
+        const contained = assertPathContained(targetPath, projectRoot);
+        // Check if argument accesses sensitive or ignored file (.env, credentials.enc, etc.)
+        if (isIgnored(contained, projectRoot)) {
+          throw new PathGuardError(
+            `Access to protected or ignored path "${targetPath}" is blocked`,
+            403
+          );
+        }
+      } catch (err) {
+        if (err instanceof PathGuardError) {
+          throw err;
+        }
+      }
+    }
+
+  }
+}
+
+/**
+ * Resolves binary name for platform-specific execution (e.g. adding .cmd on Windows).
+ *
+ * @param {string} binary
+ * @returns {string}
+ */
+export function resolveBinaryForPlatform(binary) {
+  if (process.platform === "win32") {
+    if (/\.(exe|cmd|bat)$/i.test(binary)) {
+      return binary;
+    }
+    const cmdBinaries = new Set(["npm", "npx", "pnpm", "yarn", "tsc"]);
+    if (cmdBinaries.has(binary.toLowerCase())) {
+      return `${binary}.cmd`;
+    }
+  }
+  return binary;
+}
+
+/**
+ * Executes a binary with args using execFile, timeout, buffer capping, and clean env.
+ *
+ * @param {object} options
+ * @param {string} options.binary
+ * @param {string[]} options.args
+ * @param {string} options.cwd
+ * @param {number} options.timeout
+ * @param {object} options.env
+ * @returns {Promise<{ stdout: string, stderr: string, exitCode: number, duration: number, isTimedOut: boolean }>}
+ */
+export function runExecFileWithTimeout({ binary, args, cwd, timeout, env }) {
+  const startTime = Date.now();
+  const executable = resolveBinaryForPlatform(binary);
+
   return new Promise((resolve) => {
-    const child = exec(
-      command,
+    const child = execFile(
+      executable,
+      args,
       {
         cwd,
         timeout,
-        maxBuffer: 500 * 1024, // 500 KB stdout/stderr buffer
+        maxBuffer: 500 * 1024,
         windowsHide: true,
-        env: execEnv,
+        shell: false,
+        env,
       },
       (err, stdout, stderr) => {
         const duration = Date.now() - startTime;
         const isTimedOut = Boolean(err && (err.killed || err.signal === "SIGTERM" || err.code === "ETIMEDOUT"));
 
-        // On Windows, ensure orphaned child processes of cmd.exe are cleaned up
         if (isTimedOut && process.platform === "win32" && child.pid) {
           try {
             exec(`taskkill /pid ${child.pid} /t /f`, { windowsHide: true });
-          } catch {
-            // Ignore kill errors for already-dead process
-          }
+          } catch {}
         }
 
         let normalizedStderr = stderr || "";
@@ -192,11 +397,11 @@ function runCommandWithTimeout({ command, cwd, timeout }) {
 
 /**
  * Registers the `execute_command` tool with the MCP server.
- * Runs terminal/build/test commands within the scoped project root, applying pre-flight
- * security checks, environment variable sanitization, and execution timeouts.
+ * Uses execFile with an explicit binary allowlist, argument validation, PathGuard containment,
+ * approval verification, and environment variable allowlisting.
  *
- * @param {import("@modelcontextprotocol/sdk/server/mcp.js").McpServer | import("./context.js").ToolContext} serverOrCtx - The MCP server instance or shared tool context
- * @param {object} [project] - The scoped project definition (if server instance provided directly)
+ * @param {import("@modelcontextprotocol/sdk/server/mcp.js").McpServer | import("./context.js").ToolContext} serverOrCtx
+ * @param {object} [project]
  */
 export function registerExecuteCommandTool(serverOrCtx, project) {
   const ctx = serverOrCtx?.guard ? serverOrCtx : createToolContext(serverOrCtx, project);
@@ -206,9 +411,20 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
     "execute_command",
     {
       description:
-        "Executes a terminal/build/test command inside the project directory. Performs system safety checks before running.",
+        "Executes an allowlisted terminal/build/test binary inside the project directory without raw shell execution.",
       inputSchema: {
-        command: z.string().describe("The shell command to execute (e.g., 'npm test', 'cargo build', 'python script.py')."),
+        command: z
+          .string()
+          .optional()
+          .describe("The command string to execute (e.g. 'npm test', 'git status'). Tokenized safely without shell expansion."),
+        binary: z
+          .string()
+          .optional()
+          .describe("The executable binary name from the permitted allowlist (e.g. 'npm', 'git', 'node')."),
+        args: z
+          .array(z.string())
+          .optional()
+          .describe("Array of argument strings to pass directly to the binary."),
         timeoutMs: z
           .number()
           .optional()
@@ -219,32 +435,65 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
           .describe("Optional 1-sentence summary of what this command does and why it was run."),
       },
     },
-    wrapToolHandler("EXEC", async (args) => {
-      const rawCmd = args?.command;
-      const check = validateSystemAndCommand(rawCmd, projectRoot);
+    wrapToolHandler("EXEC", async (toolArgs) => {
+      let binary = toolArgs?.binary;
+      let args = Array.isArray(toolArgs?.args) ? toolArgs.args : [];
 
-      if (!check.ok) {
-        logger.blocked("EXEC", rawCmd, check.reason || check.error);
-        throw new PathGuardError(check.error || "Command blocked by security policy", 403);
+      if (!binary && toolArgs?.command) {
+        const tokens = tokenizeCommand(toolArgs.command);
+        binary = tokens[0];
+        args = tokens.slice(1);
       }
 
-      const cwd = check.resolvedRoot || path.resolve(projectRoot);
-      const timeout = Math.min(Math.max(args?.timeoutMs || 30000, 1000), 60000);
+      if (!binary) {
+        throw new PathGuardError("Either 'command' or 'binary' parameter must be provided", 400);
+      }
 
-      const execResult = await runCommandWithTimeout({
-        command: rawCmd,
+      // Ensure projectRoot exists and assert containment of cwd
+      const cwd = assertPathContained(projectRoot, projectRoot);
+
+      // Validate binary allowlist, arguments, and path boundaries
+      validateExecution(binary, args, cwd, ctx.project);
+
+      const commandDisplay = `${binary} ${args.join(" ")}`.trim();
+      const timeout = Math.min(Math.max(toolArgs?.timeoutMs || 30000, 1000), 60000);
+
+      // Route through interactive approval workflow
+      if (isApprovalRequired(ctx.project, "EXEC")) {
+        logger.toolPending?.("EXEC", commandDisplay);
+      }
+
+      const approvalResult = await verifyActionApproval({
+        project: ctx.project,
+        actionType: "EXEC",
+        command: commandDisplay,
+        cwd,
+        logger,
+      });
+
+      if (!approvalResult.approved) {
+        return approvalResult.rejectionResponse;
+      }
+
+      // Build clean allowlisted environment
+      const cleanEnv = buildCleanEnv(cwd);
+
+      const execResult = await runExecFileWithTimeout({
+        binary,
+        args,
         cwd,
         timeout,
+        env: cleanEnv,
       });
 
       const { stdout, stderr, exitCode, duration, isTimedOut } = execResult;
 
       if (isTimedOut) {
-        logger.warn("EXEC", rawCmd, `Timed out after ${timeout}ms`);
+        logger.warn("EXEC", commandDisplay, `Timed out after ${timeout}ms`);
         return {
           isError: true,
           structuredContent: {
-            command: rawCmd,
+            command: commandDisplay,
             exitCode: 1,
             durationMs: timeout,
             stdout,
@@ -260,15 +509,15 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
         };
       }
 
-      const aiSummary = args?.summary?.trim() || args?.purpose?.trim();
+      const aiSummary = toolArgs?.summary?.trim() || toolArgs?.purpose?.trim();
       const outputClean = (stdout || stderr || "").replace(/\s+/g, " ").trim();
       const preview = outputClean ? outputClean.slice(0, 100) : "";
-      const finalSummary = aiSummary || `Executed "${rawCmd}" -> exit ${exitCode}${preview ? `: ${preview}` : ""}`;
+      const finalSummary = aiSummary || `Executed "${commandDisplay}" -> exit ${exitCode}${preview ? `: ${preview}` : ""}`;
 
-      logger.toolExec(rawCmd, exitCode, duration);
+      logger.toolExec(commandDisplay, exitCode, duration);
       recordAction(ctx.project || projectRoot, {
         action: "EXEC",
-        target: rawCmd,
+        target: commandDisplay,
         client: logger.getActiveClient(),
         details: `exit ${exitCode} (${duration}ms)`,
         summary: finalSummary,
@@ -276,10 +525,10 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
       }).catch(() => {});
 
       const responseText = [
-        `Command   : ${rawCmd}`,
+        `Command   : ${commandDisplay}`,
         `Exit Code : ${exitCode}`,
         `Duration  : ${duration}ms`,
-        `Platform  : ${check.systemInfo.platform} (${check.systemInfo.arch})`,
+        `Platform  : ${process.platform} (${process.arch})`,
         stdout ? `\n--- Output (stdout) ---\n${stdout.trim()}` : "",
         stderr ? `\n--- Error Output (stderr) ---\n${stderr.trim()}` : "",
       ]
@@ -289,7 +538,7 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
       return {
         isError: exitCode !== 0,
         structuredContent: {
-          command: rawCmd,
+          command: commandDisplay,
           exitCode,
           durationMs: duration,
           stdout,
@@ -301,3 +550,5 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
     })
   );
 }
+
+export default registerExecuteCommandTool;
