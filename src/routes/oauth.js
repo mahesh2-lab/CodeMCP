@@ -52,7 +52,9 @@ router.get("/.well-known/oauth-protected-resource", (req, res) => {
 router.post("/register", (req, res) => {
   try {
     const client = registerClient(req.body);
-    logger.serverInfo(`OAuth Dynamic Client Registered: ${client.client_name} (${client.client_id})`);
+    logger.serverInfo(
+      `OAuth Dynamic Client Registered: ${client.client_name} (${client.client_id})`,
+    );
     res.status(201).json(client);
   } catch (err) {
     res.status(400).json({
@@ -73,35 +75,28 @@ function renderAuthorizeHtml({
   scope,
   errorMessage = "",
 }) {
-  return `
-<!DOCTYPE html>
+  return ` 
+  <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <title>Authorize CodeMCP - ${escapeHtml(projectName)}</title>
 
   <style>
     :root {
-      --codemcp-red: #cb3837;
-      --codemcp-red-hover: #b82f2e;
-
+      --red: #d63638;
+      --red-hover: #c52f31;
       --black: #111111;
       --text: #24292f;
-      --muted: #6b7280;
-
-      --border: #d8dee4;
-      --border-light: #e5e7eb;
-
-      --background: #f6f6f6;
+      --muted: #617080;
+      --border: #dfe3e8;
+      --border-light: #e8ebee;
+      --bg: #f7f7f7;
       --surface: #ffffff;
-      --input: #ffffff;
-
-      --success: #1a7f37;
-
+      --success: #1a9b4a;
       --error: #b42318;
-      --error-bg: #fff1f0;
+      --error-bg: #fff4f3;
     }
 
     * {
@@ -111,13 +106,16 @@ function renderAuthorizeHtml({
     html,
     body {
       margin: 0;
-      padding: 0;
       min-height: 100%;
     }
 
     body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
       font-family:
-        Inter,
         -apple-system,
         BlinkMacSystemFont,
         "Segoe UI",
@@ -125,568 +123,474 @@ function renderAuthorizeHtml({
         Helvetica,
         Arial,
         sans-serif;
-
-      background: var(--background);
-      color: var(--text);
-
-      min-height: 100vh;
-
-      display: flex;
-      flex-direction: column;
-
       -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
     }
 
-    /* =========================================
-       HEADER
-    ========================================= */
+    /* Header */
 
     .header {
       height: 64px;
-
-      background: #ffffff;
-
-      border-bottom: 1px solid var(--border-light);
-
+      padding: 0 32px;
       display: flex;
       align-items: center;
-
-      padding: 0 32px;
+      background: #fff;
+      border-top: 4px solid #3d4657;
+      border-bottom: 1px solid var(--border-light);
     }
 
     .header-inner {
       width: 100%;
-      max-width: 1180px;
-
-      margin: 0 auto;
-
+      max-width: 1060px;
+      margin: auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
 
     .brand {
-      display: inline-flex;
+      display: flex;
       align-items: center;
-
       gap: 10px;
-
-      text-decoration: none;
-
       color: var(--black);
+      text-decoration: none;
     }
 
     .brand-icon {
-      width: 31px;
-      height: 31px;
-
+      width: 24px;
+      height: 24px;
       object-fit: contain;
-
-      display: block;
-
-      border-radius: 6px;
     }
 
     .brand-name {
-      font-size: 18px;
+      color: #111;
+      font-size: 16px;
       font-weight: 700;
-
-      letter-spacing: -0.45px;
-
-      color: #111111;
+      letter-spacing: -.25px;
     }
 
     .header-label {
-      color: #737373;
-
-      font-size: 13px;
+      color: #617080;
+      font-size: 12px;
       font-weight: 500;
     }
 
-
-    /* =========================================
-       MAIN
-    ========================================= */
+    /* Main */
 
     main {
       flex: 1;
-
       display: flex;
       justify-content: center;
       align-items: flex-start;
-
-      padding: 72px 20px 90px;
+      padding: 64px 20px 80px;
     }
 
     .container {
       width: 100%;
-      max-width: 520px;
+      max-width: 466px;
     }
 
-
-    /* =========================================
-       CARD
-    ========================================= */
+    /* Card */
 
     .card {
       width: 100%;
-
+      padding: 32px 34px;
       background: var(--surface);
-
-      border: 1px solid var(--border);
-
-      border-radius: 7px;
-
-      padding: 36px 38px;
-
+      border: 1px solid #d7dce1;
+      border-radius: 5px;
       box-shadow:
-        0 1px 2px rgba(0, 0, 0, 0.04),
-        0 5px 18px rgba(0, 0, 0, 0.045);
+        0 1px 2px rgba(0, 0, 0, .03),
+        0 5px 14px rgba(0, 0, 0, .035);
     }
 
-
-    /* =========================================
-       PRODUCT ICON
-    ========================================= */
+    /* Icon */
 
     .product-icon {
-      width: 54px;
-      height: 54px;
-
-      margin: 0 auto 22px;
-
-      border-radius: 9px;
-
-      background: #ffffff;
-
-      border: 1px solid var(--border-light);
-
+      width: 50px;
+      height: 50px;
+      margin: 0 auto 20px;
       display: flex;
       align-items: center;
       justify-content: center;
-
+      background: #fff;
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
       overflow: hidden;
-
-      box-shadow:
-        0 1px 2px rgba(0, 0, 0, 0.04);
     }
 
     .product-icon img {
       width: 100%;
       height: 100%;
-
       object-fit: contain;
     }
 
-
-    /* =========================================
-       HEADING
-    ========================================= */
+    /* Heading */
 
     h1 {
       margin: 0;
-
-      color: var(--black);
-
-      font-size: 24px;
-      line-height: 1.25;
-
+      color: #111;
+      font-size: 21px;
+      line-height: 1.3;
       font-weight: 700;
-
-      letter-spacing: -0.55px;
-
+      letter-spacing: -.35px;
       text-align: center;
     }
 
     .description {
-      margin: 12px auto 28px;
-
-      max-width: 430px;
-
-      color: var(--muted);
-
-      font-size: 14px;
+      max-width: 350px;
+      margin: 10px auto 25px;
+      color: #617080;
+      font-size: 13px;
       line-height: 1.65;
-
       text-align: center;
     }
 
     .description strong {
-      color: #333333;
+      color: #111;
       font-weight: 600;
     }
 
-
-    /* =========================================
-       REQUEST DETAILS
-    ========================================= */
+    /* Request */
 
     .request-box {
-      background: #fafafa;
-
-      border: 1px solid var(--border-light);
-
-      border-radius: 6px;
-
-      padding: 16px;
-
-      margin-bottom: 24px;
+      padding: 12px 14px;
+      margin-bottom: 21px;
+      background: #fcfcfc;
+      border: 1px solid var(--border);
+      border-radius: 5px;
     }
 
     .request-row {
-      min-height: 24px;
-
+      min-height: 27px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-
-      gap: 20px;
-
-      font-size: 13px;
+      gap: 18px;
+      font-size: 12px;
     }
 
     .request-row + .request-row {
-      margin-top: 13px;
-      padding-top: 13px;
-
-      border-top: 1px solid #eeeeee;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #eceff1;
     }
 
     .request-label {
-      color: var(--muted);
-
-      font-size: 12px;
+      color: #617080;
+      font-size: 11px;
       font-weight: 500;
-
       white-space: nowrap;
     }
 
     .request-value {
-      color: var(--black);
-
-      font-size: 13px;
-      font-weight: 600;
-
-      text-align: right;
-
       min-width: 0;
-
+      max-width: 65%;
       overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-
-    /* =========================================
-       CLIENT BADGE
-    ========================================= */
-
-    .client-badge {
-      display: inline-flex;
-      align-items: center;
-
-      max-width: 260px;
-
-      padding: 4px 8px;
-
-      background: #ffffff;
-
-      border: 1px solid var(--border);
-
-      border-radius: 4px;
-
-      color: #222222;
-
+      color: #111;
       font-size: 12px;
       font-weight: 600;
-
-      overflow: hidden;
+      text-align: right;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
+    .client-badge {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      padding: 4px 7px;
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid #d8dde2;
+      border-radius: 4px;
+      color: #111;
+      font-size: 11px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
-    /* =========================================
-       ERROR
-    ========================================= */
+    /* Error */
 
     .error-box {
       display: flex;
       align-items: flex-start;
-
-      gap: 10px;
-
+      gap: 9px;
+      padding: 10px 11px;
+      margin-bottom: 18px;
       background: var(--error-bg);
-
-      border: 1px solid #efc1be;
-
+      border: 1px solid #efc4c1;
       border-left: 3px solid var(--error);
-
-      border-radius: 5px;
-
+      border-radius: 4px;
       color: var(--error);
-
-      padding: 12px 13px;
-
-      margin-bottom: 22px;
-
-      font-size: 13px;
-
+      font-size: 12px;
       line-height: 1.5;
     }
 
     .error-icon {
-      width: 18px;
-      height: 18px;
-
+      width: 17px;
+      height: 17px;
       flex-shrink: 0;
-
-      border-radius: 50%;
-
-      background: var(--error);
-
-      color: #ffffff;
-
       display: flex;
       align-items: center;
       justify-content: center;
-
-      font-size: 11px;
+      border-radius: 50%;
+      background: var(--error);
+      color: #fff;
+      font-size: 10px;
       font-weight: 700;
     }
 
-
-    /* =========================================
-       FORM
-    ========================================= */
+    /* Form */
 
     .form-group {
-      margin-bottom: 20px;
+      margin-bottom: 17px;
     }
 
     label {
       display: block;
-
-      margin-bottom: 6px;
-
-      color: var(--black);
-
-      font-size: 13px;
+      margin-bottom: 5px;
+      color: #111;
+      font-size: 12px;
       font-weight: 600;
     }
 
     .label-description {
-      margin-bottom: 8px;
-
-      color: #737373;
-
-      font-size: 12px;
-
-      line-height: 1.5;
-    }
-
-
-    /* =========================================
-       INPUT
-    ========================================= */
-
-    .input-wrapper {
-      position: relative;
+      margin-bottom: 7px;
+      color: #617080;
+      font-size: 11px;
+      line-height: 1.45;
     }
 
     input[type="password"] {
       width: 100%;
-      height: 44px;
-
-      padding: 0 13px;
-
-      background: var(--input);
-
-      border: 1px solid #b8bec5;
-
-      border-radius: 5px;
-
-      color: var(--black);
-
+      height: 40px;
+      padding: 0 11px;
+      background: #fff;
+      border: 1px solid #bfc6ce;
+      border-radius: 4px;
+      color: #111;
       font-family: inherit;
-
-      font-size: 14px;
-
+      font-size: 12px;
       outline: none;
-
       transition:
-        border-color 0.15s ease,
-        box-shadow 0.15s ease;
+        border-color .15s ease,
+        box-shadow .15s ease;
     }
 
     input[type="password"]::placeholder {
-      color: #9ca3af;
+      color: #9aa4af;
     }
 
     input[type="password"]:hover {
-      border-color: #8b949e;
+      border-color: #9aa1a9;
     }
 
     input[type="password"]:focus {
-      border-color: var(--codemcp-red);
-
-      box-shadow:
-        0 0 0 3px rgba(203, 56, 55, 0.12);
+      border-color: var(--red);
+      box-shadow: 0 0 0 2px rgba(214, 54, 56, .12);
     }
 
+    /* Authorize Button */
 
-    /* =========================================
-       BUTTON
-    ========================================= */
-
-    button {
+    .authorize-button {
+      position: relative;
       width: 100%;
-      height: 46px;
-
-      border: 1px solid var(--codemcp-red);
-
-      border-radius: 5px;
-
-      background: var(--codemcp-red);
-
-      color: #ffffff;
-
+      height: 41px;
+      padding: 0;
+      overflow: hidden;
+      border: 1px solid var(--red);
+      border-radius: 4px;
+      background: var(--red);
+      color: #fff;
       font-family: inherit;
-
-      font-size: 14px;
-
+      font-size: 12px;
       font-weight: 700;
-
       cursor: pointer;
-
       transition:
-        background 0.15s ease,
-        border-color 0.15s ease,
-        transform 0.05s ease;
+        background .15s ease,
+        border-color .15s ease,
+        box-shadow .15s ease,
+        transform .1s ease;
     }
 
-    button:hover {
-      background: var(--codemcp-red-hover);
-
-      border-color: var(--codemcp-red-hover);
+    .authorize-button:hover {
+      background: var(--red-hover);
+      border-color: var(--red-hover);
+      box-shadow: 0 3px 8px rgba(214, 54, 56, .18);
     }
 
-    button:active {
+    .authorize-button:active {
       transform: translateY(1px);
     }
 
-    button:focus-visible {
+    .authorize-button:focus-visible {
       outline: none;
-
-      box-shadow:
-        0 0 0 3px rgba(203, 56, 55, 0.18);
+      box-shadow: 0 0 0 3px rgba(214, 54, 56, .16);
     }
 
+    .button-content {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition:
+        opacity .18s ease,
+        transform .18s ease;
+    }
 
-    /* =========================================
-       SECURITY NOTICE
-    ========================================= */
+    .button-arrow {
+      font-size: 15px;
+      transition: transform .18s ease;
+    }
+
+    .authorize-button:hover .button-arrow {
+      transform: translateX(3px);
+    }
+
+    /* Loading */
+
+    .button-loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(5px);
+      pointer-events: none;
+      transition:
+        opacity .18s ease,
+        transform .18s ease;
+    }
+
+    .authorize-button.loading .button-content {
+      opacity: 0;
+      transform: translateY(-5px);
+    }
+
+    .authorize-button.loading .button-loading {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .spinner {
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(255, 255, 255, .3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .65s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loading-dots {
+      display: inline-flex;
+      gap: 2px;
+    }
+
+    .loading-dots i {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: #fff;
+      opacity: .35;
+      animation: dot 1.1s infinite ease-in-out;
+    }
+
+    .loading-dots i:nth-child(1) {
+      animation-delay: 0s;
+    }
+
+    .loading-dots i:nth-child(2) {
+      animation-delay: .13s;
+    }
+
+    .loading-dots i:nth-child(3) {
+      animation-delay: .26s;
+    }
+
+    @keyframes dot {
+      0%, 60%, 100% {
+        opacity: .3;
+        transform: translateY(0);
+      }
+
+      30% {
+        opacity: 1;
+        transform: translateY(-2px);
+      }
+    }
+
+    /* Security */
 
     .security-note {
       display: flex;
       align-items: flex-start;
-
-      gap: 9px;
-
-      margin-top: 20px;
-
-      padding: 12px;
-
-      background: #f6f8fa;
-
+      gap: 8px;
+      margin-top: 18px;
+      padding: 10px 11px;
+      background: #f7f9fa;
       border: 1px solid var(--border-light);
-
-      border-radius: 5px;
-
-      color: var(--muted);
-
-      font-size: 12px;
-
+      border-radius: 4px;
+      color: #617080;
+      font-size: 10.5px;
       line-height: 1.55;
     }
 
     .security-icon {
-      width: 17px;
-      height: 17px;
-
+      width: 15px;
+      height: 15px;
       flex-shrink: 0;
-
-      border-radius: 50%;
-
-      background: #dafbe1;
-
-      color: var(--success);
-
       display: flex;
       align-items: center;
       justify-content: center;
-
-      font-size: 10px;
+      border-radius: 50%;
+      background: #ddf7e5;
+      color: var(--success);
+      font-size: 9px;
       font-weight: 800;
     }
 
-
-    /* =========================================
-       FOOTER
-    ========================================= */
+    /* Footer */
 
     footer {
+      padding: 18px 20px;
+      background: #fff;
       border-top: 1px solid var(--border-light);
-
-      background: #ffffff;
-
-      padding: 21px 20px;
     }
 
     .footer-inner {
       width: 100%;
-      max-width: 1180px;
-
-      margin: 0 auto;
-
+      max-width: 1060px;
+      margin: auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
-
-      gap: 20px;
     }
 
     .footer-text,
     .footer-brand {
       color: #8b949e;
-
-      font-size: 12px;
+      font-size: 10px;
     }
 
     .footer-brand {
       font-weight: 600;
     }
 
-
-    /* =========================================
-       RESPONSIVE
-    ========================================= */
+    /* Mobile */
 
     @media (max-width: 600px) {
-
       .header {
-        height: 60px;
-
-        padding: 0 18px;
-      }
-
-      .brand-icon {
-        width: 29px;
-        height: 29px;
-      }
-
-      .brand-name {
-        font-size: 17px;
+        height: 58px;
+        padding: 0 17px;
       }
 
       .header-label {
@@ -694,86 +598,57 @@ function renderAuthorizeHtml({
       }
 
       main {
-        padding: 34px 14px 50px;
+        padding: 32px 14px 50px;
       }
 
       .card {
-        padding: 28px 22px;
-
-        border-radius: 6px;
+        padding: 27px 21px;
       }
 
       .product-icon {
-        width: 50px;
-        height: 50px;
-
-        margin-bottom: 19px;
+        width: 48px;
+        height: 48px;
       }
 
       h1 {
-        font-size: 22px;
+        font-size: 20px;
       }
 
       .description {
-        font-size: 13px;
-
-        margin-bottom: 24px;
+        font-size: 12px;
       }
 
       .request-box {
-        padding: 14px;
+        padding: 11px 12px;
       }
 
       .request-row {
-        align-items: flex-start;
+        gap: 12px;
       }
 
       .request-value {
-        max-width: 60%;
-      }
-
-      .client-badge {
-        max-width: 100%;
+        max-width: 62%;
       }
 
       footer {
-        padding: 18px;
-      }
-
-      .footer-inner {
-        flex-direction: column;
-
-        text-align: center;
-
-        gap: 7px;
+        padding: 16px;
       }
     }
   </style>
 </head>
 
-
 <body>
 
-  <!-- =========================================
-       HEADER
-  ========================================== -->
-
   <header class="header">
-
     <div class="header-inner">
 
       <a href="/" class="brand">
-
         <img
           src="https://raw.githubusercontent.com/mahesh2-lab/CodeMCP/refs/heads/main/assets/icon.png"
           alt="CodeMCP"
           class="brand-icon"
         >
-
-        <span class="brand-name">
-          CodeMCP
-        </span>
-
+        <span class="brand-name">CodeMCP</span>
       </a>
 
       <span class="header-label">
@@ -781,149 +656,80 @@ function renderAuthorizeHtml({
       </span>
 
     </div>
-
   </header>
 
-
-  <!-- =========================================
-       MAIN
-  ========================================== -->
-
   <main>
-
     <div class="container">
 
       <section class="card">
 
-
-        <!-- Product Icon -->
-
         <div class="product-icon">
-
           <img
             src="https://raw.githubusercontent.com/mahesh2-lab/CodeMCP/refs/heads/main/assets/icon.png"
             alt="CodeMCP"
           >
-
         </div>
 
-
-        <!-- Heading -->
-
-        <h1>
-          Authorize CodeMCP
-        </h1>
-
+        <h1>Authorize CodeMCP</h1>
 
         <p class="description">
-
           <strong>${escapeHtml(clientName)}</strong>
           is requesting permission to connect to your
-          <strong>CodeMCP</strong>
-          project.
-
+          <strong>CodeMCP</strong> project.
         </p>
-
-
-        <!-- =====================================
-             REQUEST INFORMATION
-        ====================================== -->
 
         <div class="request-box">
 
-
           <div class="request-row">
-
-            <span class="request-label">
-              Application
-            </span>
+            <span class="request-label">Application</span>
 
             <span class="request-value">
-
-              <span class="client-badge">
-                CodeMCP
-              </span>
-
+              <span class="client-badge">CodeMCP</span>
             </span>
-
           </div>
 
-
           <div class="request-row">
-
-            <span class="request-label">
-              Client
-            </span>
+            <span class="request-label">Client</span>
 
             <span class="request-value">
               ${escapeHtml(clientName)}
             </span>
-
           </div>
 
-
           <div class="request-row">
-
-            <span class="request-label">
-              Project
-            </span>
+            <span class="request-label">Project</span>
 
             <span class="request-value">
               ${escapeHtml(projectName)}
             </span>
-
           </div>
 
-
           <div class="request-row">
-
-            <span class="request-label">
-              Permissions
-            </span>
+            <span class="request-label">Permissions</span>
 
             <span class="request-value">
               MCP tools &amp; file operations
             </span>
-
           </div>
 
-
         </div>
-
-
-        <!-- =====================================
-             ERROR MESSAGE
-        ====================================== -->
 
         ${
           errorMessage
             ? `
               <div class="error-box">
-
-                <span class="error-icon">
-                  !
-                </span>
-
-                <span>
-                  ${escapeHtml(errorMessage)}
-                </span>
-
+                <span class="error-icon">!</span>
+                <span>${escapeHtml(errorMessage)}</span>
               </div>
             `
             : ""
         }
 
-
-        <!-- =====================================
-             AUTHORIZATION FORM
-        ====================================== -->
-
         <form
           method="POST"
           action="/authorize"
+          id="authorizeForm"
         >
-
-          <!-- OAuth / MCP Parameters -->
 
           <input
             type="hidden"
@@ -961,9 +767,6 @@ function renderAuthorizeHtml({
             value="${escapeHtml(scope || "mcp")}"
           >
 
-
-          <!-- Password -->
-
           <div class="form-group">
 
             <label for="password">
@@ -974,67 +777,60 @@ function renderAuthorizeHtml({
               Enter the password associated with this CodeMCP project.
             </div>
 
-            <div class="input-wrapper">
-
-              <input
-                type="password"
-                id="password"
-                name="password"
-                placeholder="Enter your owner password"
-                autocomplete="current-password"
-                required
-                autofocus
-              >
-
-            </div>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              placeholder="Enter your owner password"
+              autocomplete="current-password"
+              required
+              autofocus
+            >
 
           </div>
 
+          <button
+            type="submit"
+            id="authorizeButton"
+            class="authorize-button"
+          >
 
-          <!-- Submit -->
+            <span class="button-content">
+              <span>Authorize and Continue</span>
+              <span class="button-arrow">→</span>
+            </span>
 
-          <button type="submit">
-            Authorize and Continue
+            <span class="button-loading">
+              <span class="spinner"></span>
+              <span>Authorizing</span>
+
+              <span class="loading-dots">
+                <i></i>
+                <i></i>
+                <i></i>
+              </span>
+            </span>
+
           </button>
-
 
         </form>
 
-
-        <!-- =====================================
-             SECURITY NOTICE
-        ====================================== -->
-
         <div class="security-note">
-
-          <span class="security-icon">
-            ✓
-          </span>
+          <span class="security-icon">✓</span>
 
           <span>
-            Your credentials are used only to authorize this
-            connection. Access is limited to the project and
-            permissions described above.
+            Your credentials are used only to authorize this connection.
+            Access is limited to the project and permissions described above.
           </span>
-
         </div>
-
 
       </section>
 
     </div>
-
   </main>
 
-
-  <!-- =========================================
-       FOOTER
-  ========================================== -->
-
   <footer>
-
     <div class="footer-inner">
-
       <span class="footer-text">
         Secure authorization powered by CodeMCP
       </span>
@@ -1042,14 +838,31 @@ function renderAuthorizeHtml({
       <span class="footer-brand">
         CodeMCP
       </span>
-
     </div>
-
   </footer>
+
+  <script>
+    const form = document.getElementById("authorizeForm");
+    const button = document.getElementById("authorizeButton");
+
+    form.addEventListener("submit", event => {
+      if (button.classList.contains("loading")) {
+        event.preventDefault();
+        return;
+      }
+
+      button.classList.add("loading");
+      button.disabled = true;
+
+      setTimeout(() => {
+        form.submit();
+      }, 650);
+    });
+  </script>
 
 </body>
 </html>
-
+  
   
   `;
 }
@@ -1078,7 +891,9 @@ router.get("/authorize", (req, res) => {
   } = req.query;
 
   if (response_type !== "code") {
-    return res.status(400).send("Invalid response_type: only 'code' is supported.");
+    return res
+      .status(400)
+      .send("Invalid response_type: only 'code' is supported.");
   }
 
   if (!client_id || typeof client_id !== "string") {
@@ -1095,7 +910,11 @@ router.get("/authorize", (req, res) => {
   }
 
   if (!code_challenge || code_challenge_method !== "S256") {
-    return res.status(400).send("PKCE is required. Provide code_challenge with code_challenge_method=S256.");
+    return res
+      .status(400)
+      .send(
+        "PKCE is required. Provide code_challenge with code_challenge_method=S256.",
+      );
   }
 
   const project = getActiveProject();
@@ -1165,7 +984,9 @@ router.post("/authorize", (req, res) => {
     scope: scope || "mcp",
   });
 
-  logger.serverInfo(`Issued OAuth authorization code for client ${client.client_name} (${client_id})`);
+  logger.serverInfo(
+    `Issued OAuth authorization code for client ${client.client_name} (${client_id})`,
+  );
 
   const redirectUrl = new URL(redirect_uri);
   redirectUrl.searchParams.set("code", code);
@@ -1180,13 +1001,7 @@ router.post("/authorize", (req, res) => {
  * POST /token - Exchanges authorization code + PKCE verifier for JWT access token
  */
 router.post("/token", (req, res) => {
-  const {
-    grant_type,
-    code,
-    redirect_uri,
-    client_id,
-    code_verifier,
-  } = req.body;
+  const { grant_type, code, redirect_uri, client_id, code_verifier } = req.body;
 
   if (grant_type !== "authorization_code") {
     return res.status(400).json({
@@ -1195,7 +1010,12 @@ router.post("/token", (req, res) => {
     });
   }
 
-  const verification = consumeAuthCode(code, client_id, redirect_uri, code_verifier);
+  const verification = consumeAuthCode(
+    code,
+    client_id,
+    redirect_uri,
+    code_verifier,
+  );
   if (!verification.ok) {
     return res.status(400).json({
       error: verification.error,
