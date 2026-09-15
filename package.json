@@ -2,6 +2,14 @@
   "name": "@mahesh2-lab/codemcp",
   "version": "1.1.5",
   "description": "Project-scoped MCP server providing context, file access, and execution tools for AI assistants and MCP clients",
+  "homepage": "https://code-mcp.vercel.app/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mahesh2-lab/CodeMCP.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mahesh2-lab/CodeMCP/issues"
+  },
   "main": "dist/server.js",
   "type": "module",
   "bin": {

@@ -1,7 +1,8 @@
 # CodeMCP — Complete Technical Specification & System Architecture Manual
 
 > **Package**: `@mahesh2-lab/codemcp`  
-> **Current Version**: `1.1.2`  
+> **Website**: [https://code-mcp.vercel.app/](https://code-mcp.vercel.app/)  
+> **Current Version**: `1.1.5`  
 > **License**: MIT  
 > **Module System**: ECMAScript Modules (`"type": "module"`)  
 > **Runtime Requirement**: Node.js `>=18.0.0`  

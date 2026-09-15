@@ -94,6 +94,7 @@ export function getCustomHelpText(pkgVersion = defaultPkgVersion) {
 
   // 6. Footer
   output.push(section("Help & Documentation"));
+  output.push(`    ${pc.dim("Website :")} ${pc.cyan("https://code-mcp.vercel.app")}`);
   output.push(`    ${pc.dim("GitHub  :")} ${pc.cyan("https://github.com/mahesh2-lab/CodeMCP")}`);
   output.push(`    ${pc.dim("Protocol:")} ${pc.cyan("https://modelcontextprotocol.io")}\n`);
 

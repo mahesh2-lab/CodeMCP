@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/mahesh2-lab/CodeMCP" target="_blank" rel="noopener noreferrer">
+  <a href="https://code-mcp.vercel.app/" target="_blank" rel="noopener noreferrer">
     <img src="https://raw.githubusercontent.com/mahesh2-lab/CodeMCP/refs/heads/main/assets/banner.png" alt="CodeMCP — The Zero-Config Model Context Protocol Server" width="100%" style="border-radius: 10px; max-width: 960px;" />
   </a>
 </p>
@@ -12,6 +12,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@mahesh2-lab/codemcp?style=flat-square&color=black&labelColor=222)](https://www.npmjs.com/package/@mahesh2-lab/codemcp)
 [![npm downloads](https://img.shields.io/npm/dm/@mahesh2-lab/codemcp?style=flat-square&color=blue&labelColor=222)](https://www.npmjs.com/package/@mahesh2-lab/codemcp)
+[![Website](https://img.shields.io/badge/Website-code--mcp.vercel.app-000000?style=flat-square&logo=vercel&logoColor=white)](https://code-mcp.vercel.app/)
 [![Protocol](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-6366f1?style=flat-square&labelColor=222)](https://modelcontextprotocol.io)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-339933?style=flat-square&labelColor=222)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow?style=flat-square&labelColor=222)](LICENSE)
@@ -23,6 +24,7 @@
 </p>
 
 <p align="center">
+  <a href="https://code-mcp.vercel.app/" target="_blank">🌐 <b>Website</b></a> •
   <a href="#-quick-start">Quick Start</a> •
   <a href="#-why-codemcp">Why CodeMCP</a> •
   <a href="#-interactive-change-approval-human-in-the-loop">Change Approval</a> •
@@ -41,6 +43,9 @@
 **CodeMCP** is a developer-first Model Context Protocol (MCP) server that empowers LLM coding assistants to navigate, understand, and safely modify your local projects without the friction of copying and pasting code.
 
 Traditional MCP setups require complicated STDIO pipelines, manual JSON plumbing, and lack safety guardrails. **CodeMCP runs as a self-contained, interactive CLI service** with an automated public HTTPS tunnel, real-time column-aligned telemetry, native desktop alerts, and human-in-the-loop diff approval before any write or delete touches your disk.
+
+> [!TIP]
+> 🌐 **Interactive Web Portal:** Visit [code-mcp.vercel.app](https://code-mcp.vercel.app/) to explore the interactive visual guide, documentation, and configuration builders.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -364,6 +369,15 @@ codemcp init
   "techStack": ["Node.js", "React", "TypeScript"]
 }
 ```
+
+---
+
+## 🔗 Links & Resources
+
+* 🌐 **Official Website & Docs**: [code-mcp.vercel.app](https://code-mcp.vercel.app/)
+* 📦 **npm Package**: [@mahesh2-lab/codemcp](https://www.npmjs.com/package/@mahesh2-lab/codemcp)
+* 🐙 **GitHub Repository**: [mahesh2-lab/CodeMCP](https://github.com/mahesh2-lab/CodeMCP)
+* 📑 **Model Context Protocol**: [modelcontextprotocol.io](https://modelcontextprotocol.io)
 
 ---
 
