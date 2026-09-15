@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/mahesh2-lab/CodeMCP" target="_blank" rel="noopener noreferrer">
-    <img src="./assets/banner.png" alt="CodeMCP — The Zero-Config Model Context Protocol Server" width="100%" style="border-radius: 10px; max-width: 960px;" />
+    <img src="https://raw.githubusercontent.com/mahesh2-lab/CodeMCP/refs/heads/main/assets/banner.png" alt="CodeMCP — The Zero-Config Model Context Protocol Server" width="100%" style="border-radius: 10px; max-width: 960px;" />
   </a>
 </p>
 
