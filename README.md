@@ -56,7 +56,7 @@ CodeMCP gives an assistant a bounded view of a project, with tools for inspectin
 ## Requirements
 
 - Node.js 18 or newer.
-- npm (the repository uses npm in CI). pnpm, yarn, or npx can also launch the published package.
+- npm. pnpm, yarn, or npx can also launch the published package.
 - An MCP client that supports Streamable HTTP and OAuth 2.0 for a protected remote endpoint.
 - An ngrok account and API key only when the public tunnel is enabled.
 
@@ -169,8 +169,8 @@ Permissions determine tool registration:
 
 | Permission | Registered tools |
 | --- | --- |
-| `read` | Context and memory tools, `list_files`, `read_file`, `search_code` |
-| `write` | Context and memory tools, `write_file`, `delete_file`, `execute_command` |
+| `read` | Context and memory tools, `ask_question`, `finish`, `list_files`, `find_file`, `read_file`, `search_code` |
+| `write` | Context and memory tools, `ask_question`, `finish`, `write_file`, `edit_file`, `delete_file`, `execute_command` |
 | `both` | All tools |
 
 `codemcp init` also creates `.mcpignore` with defaults for `.env`, `.env.*`, `node_modules`, `.git`, `dist`, `build`, and `.DS_Store`. If a `.gitignore` exists, initialization ensures `.env` and `.env.*` are present there too. Both ignore files are honored by project inspection and search.
@@ -207,14 +207,18 @@ All file paths are relative to the configured project root. Tool responses conta
 | Tool | Inputs | Behavior |
 | --- | --- | --- |
 | `get_project_context` | None | Returns project metadata, description, context-file contents, latest handoff, and up to five recent actions. |
+| `ask_question` | `question`, `options?` | Asks the connected user a question through MCP elicitation when supported; otherwise returns a response indicating that client interaction is required. |
 | `list_files` | `path?`, `maxFiles?` | Recursively lists allowed files. Defaults to `.` and 1,000 files; maximum is 10,000. Reports truncation. |
+| `find_file` | `pattern`, `path?`, `maxResults?` | Finds project files by filename or glob-style pattern while respecting ignore rules and path boundaries. Returns up to 1,000 matches. |
 | `read_file` | `path` | Reads UTF-8 text up to 10 MB. Binary files and disallowed file types are rejected. |
 | `search_code` | `query`, `path?`, `isRegex?`, `caseSensitive?`, `maxResults?` | Searches with ripgrep, falling back to a JavaScript walker. Query length is limited to 500 characters; default results are 30 and maximum is 100. Search files are limited to 2 MB. |
 | `write_file` | `path`, `content`, `summary?` | Creates or overwrites a project file. Approval can show an LCS diff before writing. |
+| `edit_file` | `path`, `oldText`, `newText`, `replaceAll?`, `summary?` | Replaces exact text in an existing UTF-8 file up to 10 MB. Approval applies before the edit, and the result reports the replacement count. |
 | `delete_file` | `path`, `summary?` | Deletes one file after path checks and optional approval. Directories cannot be deleted. |
 | `execute_command` | `command?` or `binary` + `args?`, `timeoutMs?`, `summary?` | Runs an allowlisted binary with `shell: false`, a clean environment, and a timeout clamped to 1-60 seconds (default 30 seconds). |
 | `record_memory` | `summary`, `decisions?`, `nextSteps?` | Saves a project handoff note in `.codemcp/memory.json`. |
 | `get_memory` | None | Returns the handoff and complete rolling action journal. |
+| `finish` | `summary`, `success?`, `nextSteps?` | Marks an agent task complete and returns a structured final result. |
 
 ### Command execution policy
 
@@ -292,7 +296,7 @@ Environment variables take precedence over values in the encrypted credential va
 Install dependencies and run the source CLI:
 
 ```bash
-npm ci
+npm install
 npm run dev
 ```
 
@@ -359,7 +363,7 @@ info.md                    Extended internal architecture specification
 ## Contributing
 
 1. Fork the repository and create a focused branch.
-2. Run `npm ci`, `npm test`, and `npm run build`.
+2. Run `npm install`, `npm test`, and `npm run build`.
 3. Keep changes scoped, update tests for behavior changes, and update this README when public commands, configuration, or protocol behavior changes.
 4. Open a pull request with the behavior, validation commands, and any security implications described.
 

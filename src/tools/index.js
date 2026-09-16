@@ -7,7 +7,15 @@ import { registerDeleteFileTool } from "./deleteFile.js";
 import { registerExecuteCommandTool } from "./executeCommand.js";
 import { registerProjectContextTool } from "./projectContext.js";
 import { registerMemoryTools } from "./manageMemory.js";
-import { createToolContext, wrapToolHandler, formatToolResponse } from "./context.js";
+import { registerAskQuestionTool } from "./askQuestion.js";
+import { registerEditFileTool } from "./editFile.js";
+import { registerFindFileTool } from "./findFile.js";
+import { registerFinishTool } from "./finish.js";
+import {
+  createToolContext,
+  wrapToolHandler,
+  formatToolResponse,
+} from "./context.js";
 
 /**
  * Registers all project-scoped tools with the provided MCP server instance
@@ -24,6 +32,8 @@ export function registerTools(server, project) {
   if (project) {
     registerProjectContextTool(ctx);
     registerMemoryTools(ctx);
+    registerAskQuestionTool(ctx);
+    registerFinishTool(ctx);
   }
 
   // 2. Read-only inspection tools
@@ -31,6 +41,7 @@ export function registerTools(server, project) {
     registerListFilesTool(ctx);
     registerReadFileTool(ctx);
     registerSearchCodeTool(ctx);
+    registerFindFileTool(ctx);
   }
 
   // 3. Mutation and execution tools
@@ -38,27 +49,37 @@ export function registerTools(server, project) {
     registerWriteFileTool(ctx);
     registerDeleteFileTool(ctx);
     registerExecuteCommandTool(ctx);
+    registerEditFileTool(ctx);
   }
 
   // 4. Client Compatibility Bridge:
   // External MCP clients (e.g. Claude Desktop, Cursor) may omit the `arguments` field
   // or supply null/undefined when invoking zero-parameter tools. We intercept and normalize
   // the `tools/call` schema handler to provide an empty object `{}` fallback.
-  if (server?.server?._requestHandlers && typeof server.server._requestHandlers.get === "function") {
+  if (
+    server?.server?._requestHandlers &&
+    typeof server.server._requestHandlers.get === "function"
+  ) {
     const rawCallHandler = server.server._requestHandlers.get("tools/call");
-    if (rawCallHandler && typeof server.server.setRequestHandler === "function") {
-      server.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
-        if (
-          request?.params &&
-          (request.params.arguments === undefined ||
-            request.params.arguments === null ||
-            typeof request.params.arguments !== "object" ||
-            Array.isArray(request.params.arguments))
-        ) {
-          request.params.arguments = {};
-        }
-        return await rawCallHandler(request, extra);
-      });
+    if (
+      rawCallHandler &&
+      typeof server.server.setRequestHandler === "function"
+    ) {
+      server.server.setRequestHandler(
+        CallToolRequestSchema,
+        async (request, extra) => {
+          if (
+            request?.params &&
+            (request.params.arguments === undefined ||
+              request.params.arguments === null ||
+              typeof request.params.arguments !== "object" ||
+              Array.isArray(request.params.arguments))
+          ) {
+            request.params.arguments = {};
+          }
+          return await rawCallHandler(request, extra);
+        },
+      );
     }
   }
 }
@@ -75,4 +96,8 @@ export {
   registerExecuteCommandTool,
   registerProjectContextTool,
   registerMemoryTools,
+  registerAskQuestionTool,
+  registerEditFileTool,
+  registerFindFileTool,
+  registerFinishTool,
 };
