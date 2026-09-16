@@ -6,9 +6,12 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
+const packageDir = path.join(rootDir, "package");
 
 // Read package.json to get dependencies that should be kept external
-const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf-8"));
+const pkg = JSON.parse(
+  fs.readFileSync(path.join(rootDir, "package.json"), "utf-8"),
+);
 const pkgVersion = pkg.version || "1.1.2";
 const externalDeps = [
   ...Object.keys(pkg.dependencies || {}),
@@ -22,6 +25,19 @@ async function build() {
     fs.rmSync(distDir, { recursive: true, force: true });
   }
   fs.mkdirSync(distDir, { recursive: true });
+
+  console.log("📦 Preparing package staging folder...");
+  fs.mkdirSync(packageDir, { recursive: true });
+
+  const packageReadmeSource = fs.existsSync(path.join(rootDir, "README.md"));
+  if (packageReadmeSource) {
+    fs.copyFileSync(packageReadmeSource, path.join(packageDir, "README.md"));
+  }
+
+  const licenseSrc = path.join(rootDir, "LICENSE");
+  if (fs.existsSync(licenseSrc)) {
+    fs.copyFileSync(licenseSrc, path.join(packageDir, "LICENSE"));
+  }
 
   // Copy assets
   const assetsDir = path.join(rootDir, "assets");
@@ -43,10 +59,14 @@ async function build() {
   if (fs.existsSync(bannerSrc)) {
     fs.copyFileSync(bannerSrc, path.join(distAssetsDir, "banner.png"));
     fs.copyFileSync(bannerSrc, path.join(distDir, "banner.png"));
-    console.log("🖼 Copied banner.png to dist/assets/banner.png & dist/banner.png");
+    console.log(
+      "🖼 Copied banner.png to dist/assets/banner.png & dist/banner.png",
+    );
   }
 
-  console.log(`📦 Building unified CodeMCP v${pkgVersion} bundle with esbuild...`);
+  console.log(
+    `📦 Building unified CodeMCP v${pkgVersion} bundle with esbuild...`,
+  );
 
   // Build unified CLI & Server bundle -> dist/cli.js
   await esbuild.build({
@@ -68,13 +88,16 @@ async function build() {
   if (!cliContent.startsWith("#!/usr/bin/env node")) {
     cliContent = "#!/usr/bin/env node\n" + cliContent;
   }
-  fs.writeFileSync(path.join(distDir, "cli.js"), cliContent, { encoding: "utf-8", mode: 0o755 });
+  fs.writeFileSync(path.join(distDir, "cli.js"), cliContent, {
+    encoding: "utf-8",
+    mode: 0o755,
+  });
 
   // Provide dist/server.js for backward compatibility
   fs.writeFileSync(
     path.join(distDir, "server.js"),
     'import "./cli.js";\nexport * from "./cli.js";\n',
-    "utf-8"
+    "utf-8",
   );
 
   console.log("✔ Compilation completed successfully!");
