@@ -3,9 +3,39 @@ import { getEnv, setEnv } from "../utils/env.js";
 import { getCredential, setCredential } from "../utils/credentials.js";
 import { logger } from "../utils/logger.js";
 
-// In-memory storage for client registrations and auth codes
+const OAUTH_CLIENTS_KEY = "OAUTH_CLIENTS";
+
+// Client registrations survive restarts; authorization codes remain short-lived in memory.
 export const clientStore = new Map();
 export const authCodeStore = new Map();
+
+function loadPersistedClients() {
+  const serialized = getCredential(OAUTH_CLIENTS_KEY, "");
+  if (!serialized) return;
+
+  try {
+    const clients = JSON.parse(serialized);
+    if (!Array.isArray(clients)) return;
+
+    for (const client of clients) {
+      if (
+        client &&
+        typeof client.client_id === "string" &&
+        Array.isArray(client.redirect_uris)
+      ) {
+        clientStore.set(client.client_id, client);
+      }
+    }
+  } catch {
+    // Ignore invalid persisted data and allow new registrations to proceed.
+  }
+}
+
+function persistClients() {
+  setCredential(OAUTH_CLIENTS_KEY, JSON.stringify([...clientStore.values()]));
+}
+
+loadPersistedClients();
 
 /** Auth code expiration: 5 minutes */
 export const AUTH_CODE_TTL_MS = 5 * 60 * 1000;
@@ -114,7 +144,9 @@ export function base64UrlDecode(str) {
  */
 export function registerClient(metadata = {}) {
   const redirectUris = Array.isArray(metadata.redirect_uris)
-    ? metadata.redirect_uris.filter((u) => typeof u === "string" && u.trim().length > 0)
+    ? metadata.redirect_uris.filter(
+        (u) => typeof u === "string" && u.trim().length > 0,
+      )
     : [];
 
   if (redirectUris.length === 0) {
@@ -122,9 +154,10 @@ export function registerClient(metadata = {}) {
   }
 
   const clientId = crypto.randomUUID();
-  const clientName = typeof metadata.client_name === "string" && metadata.client_name.trim()
-    ? metadata.client_name.trim()
-    : `Client-${clientId.slice(0, 8)}`;
+  const clientName =
+    typeof metadata.client_name === "string" && metadata.client_name.trim()
+      ? metadata.client_name.trim()
+      : `Client-${clientId.slice(0, 8)}`;
 
   const client = {
     client_id: clientId,
@@ -138,6 +171,7 @@ export function registerClient(metadata = {}) {
   };
 
   clientStore.set(clientId, client);
+  persistClients();
   return client;
 }
 
@@ -168,15 +202,20 @@ export function getOwnerPassword() {
 
   const existing = getEnv("OWNER_PASSWORD", "");
   // Read timestamp directly from vault (not via getEnv, since it's not a sensitive key)
-  const createdAt = parseInt(getCredential("OWNER_PASSWORD_CREATED_AT", "0"), 10);
-  const isExpired = !createdAt || (Date.now() - createdAt) > PASSWORD_ROTATION_MS;
+  const createdAt = parseInt(
+    getCredential("OWNER_PASSWORD_CREATED_AT", "0"),
+    10,
+  );
+  const isExpired = !createdAt || Date.now() - createdAt > PASSWORD_ROTATION_MS;
 
   if (existing && !isExpired) {
     return existing;
   }
 
   if (existing && isExpired) {
-    logger.serverInfo("Auto-generated password has expired (7-day rotation). Generating a new one.");
+    logger.serverInfo(
+      "Auto-generated password has expired (7-day rotation). Generating a new one.",
+    );
   }
 
   // Generate and persist both password + timestamp to the encrypted vault
@@ -188,7 +227,7 @@ export function getOwnerPassword() {
 
 /** True only when the user explicitly set OWNER_PASSWORD before server startup */
 const _userSetOwnerPassword = Boolean(
-  process.env.OWNER_PASSWORD && process.env.OWNER_PASSWORD.trim()
+  process.env.OWNER_PASSWORD && process.env.OWNER_PASSWORD.trim(),
 );
 
 /**
@@ -295,34 +334,64 @@ export function verifyPkce(verifier, challenge, method = "S256") {
  */
 export function consumeAuthCode(code, clientId, redirectUri, codeVerifier) {
   if (!code || typeof code !== "string") {
-    return { ok: false, error: "invalid_request", errorDescription: "Missing authorization code" };
+    return {
+      ok: false,
+      error: "invalid_request",
+      errorDescription: "Missing authorization code",
+    };
   }
 
   const record = authCodeStore.get(code);
   if (!record) {
-    return { ok: false, error: "invalid_grant", errorDescription: "Authorization code not found" };
+    return {
+      ok: false,
+      error: "invalid_grant",
+      errorDescription: "Authorization code not found",
+    };
   }
 
   if (record.used) {
     authCodeStore.delete(code);
-    return { ok: false, error: "invalid_grant", errorDescription: "Authorization code has already been used" };
+    return {
+      ok: false,
+      error: "invalid_grant",
+      errorDescription: "Authorization code has already been used",
+    };
   }
 
   if (Date.now() > record.expiresAt) {
     authCodeStore.delete(code);
-    return { ok: false, error: "invalid_grant", errorDescription: "Authorization code has expired" };
+    return {
+      ok: false,
+      error: "invalid_grant",
+      errorDescription: "Authorization code has expired",
+    };
   }
 
   if (record.clientId !== clientId) {
-    return { ok: false, error: "invalid_grant", errorDescription: "client_id does not match authorization code" };
+    return {
+      ok: false,
+      error: "invalid_grant",
+      errorDescription: "client_id does not match authorization code",
+    };
   }
 
   if (record.redirectUri !== redirectUri) {
-    return { ok: false, error: "invalid_grant", errorDescription: "redirect_uri does not match authorization code" };
+    return {
+      ok: false,
+      error: "invalid_grant",
+      errorDescription: "redirect_uri does not match authorization code",
+    };
   }
 
-  if (!verifyPkce(codeVerifier, record.codeChallenge, record.codeChallengeMethod)) {
-    return { ok: false, error: "invalid_grant", errorDescription: "PKCE verification failed" };
+  if (
+    !verifyPkce(codeVerifier, record.codeChallenge, record.codeChallengeMethod)
+  ) {
+    return {
+      ok: false,
+      error: "invalid_grant",
+      errorDescription: "PKCE verification failed",
+    };
   }
 
   // Mark as used and delete immediately
@@ -409,7 +478,10 @@ export function verifyAccessToken(token) {
   const givenSigBuf = Buffer.from(encodedSignature, "utf8");
   const calcSigBuf = Buffer.from(calculatedSig, "utf8");
 
-  if (givenSigBuf.length !== calcSigBuf.length || !crypto.timingSafeEqual(givenSigBuf, calcSigBuf)) {
+  if (
+    givenSigBuf.length !== calcSigBuf.length ||
+    !crypto.timingSafeEqual(givenSigBuf, calcSigBuf)
+  ) {
     return { valid: false, error: "Invalid token signature" };
   }
 
