@@ -24,23 +24,29 @@ export function isSensitiveKey(key) {
   return SENSITIVE_KEYS.has(key) || /^(.*_)?(KEY|TOKEN|SECRET|PASSWORD|AUTH)$/i.test(key);
 }
 
+
+const MACHINE_KEY_FILE = path.join(CODEMCP_DIR, ".machine_key");
+
+function getMachineSecret() {
+  ensureVaultDir();
+  if (fs.existsSync(MACHINE_KEY_FILE)) {
+    return fs.readFileSync(MACHINE_KEY_FILE, "utf-8").trim();
+  }
+  const secret = crypto.randomBytes(32).toString("hex");
+  fs.writeFileSync(MACHINE_KEY_FILE, secret, { encoding: "utf-8", mode: 0o600 });
+  return secret;
+}
+
 /**
  * Derives a consistent, machine-bound 256-bit encryption key.
  *
- * @param {string} [saltStr="codemcp-secure-vault-salt-v1"]
+ * @param {string} [secretInput]
  * @returns {Buffer}
  */
-function deriveEncryptionKey(saltStr = "codemcp-secure-vault-salt-v1") {
-  const machineFingerprint = [
-    os.userInfo().username || "user",
-    os.hostname() || "host",
-    os.homedir() || "home",
-    process.platform,
-    process.arch,
-  ].join("::");
-
-  const salt = Buffer.from(saltStr, "utf-8");
-  return crypto.pbkdf2Sync(machineFingerprint, salt, 100000, 32, "sha256");
+function deriveEncryptionKey(secretInput = null) {
+  const secret = secretInput || getMachineSecret();
+  const salt = Buffer.from("codemcp-secure-vault-salt-v1", "utf-8");
+  return crypto.pbkdf2Sync(secret, salt, 100000, 32, "sha256");
 }
 
 /**
@@ -74,6 +80,7 @@ function tryDecrypt(payload, key) {
 
 /**
  * Reads and decrypts all credentials from ~/.codemcp/credentials.enc.
+ * Supports transparent migration from legacy fingerprint and hex-encoded keys.
  *
  * @returns {Record<string, string>}
  */
@@ -90,8 +97,57 @@ export function getAllCredentials() {
       return {};
     }
 
-    const creds = tryDecrypt(payload, deriveEncryptionKey("codemcp-secure-vault-salt-v1"));
-    return creds || {};
+    const salt = Buffer.from("codemcp-secure-vault-salt-v1", "utf-8");
+    const canonicalKey = deriveEncryptionKey();
+
+    // 1. Primary: canonical machine secret key
+    try {
+      const creds = tryDecrypt(payload, canonicalKey);
+      if (creds && typeof creds === "object") return creds;
+    } catch {}
+
+    // 2. Fallback: key derived when 'codemcp-secure-vault-salt-v1' was mistakenly passed as secret
+    try {
+      const saltAsSecretKey = crypto.pbkdf2Sync("codemcp-secure-vault-salt-v1", salt, 100000, 32, "sha256");
+      const creds = tryDecrypt(payload, saltAsSecretKey);
+      if (creds && typeof creds === "object") {
+        saveAllCredentials(creds);
+        return creds;
+      }
+    } catch {}
+
+    // 3. Fallback: key derived from reading .machine_key with hex encoding
+    if (fs.existsSync(MACHINE_KEY_FILE)) {
+      try {
+        const hexSecret = fs.readFileSync(MACHINE_KEY_FILE, "hex");
+        const hexKey = crypto.pbkdf2Sync(hexSecret, salt, 100000, 32, "sha256");
+        const creds = tryDecrypt(payload, hexKey);
+        if (creds && typeof creds === "object") {
+          // Re-encrypt with canonical key so future reads are fast and standard
+          saveAllCredentials(creds);
+          return creds;
+        }
+      } catch {}
+    }
+
+    // 4. Fallback: legacy OS fingerprint key
+    try {
+      const machineFingerprint = [
+        os.userInfo().username || "user",
+        os.hostname() || "host",
+        os.homedir() || "home",
+        process.platform,
+        process.arch,
+      ].join("::");
+      const legacyKey = crypto.pbkdf2Sync(machineFingerprint, salt, 100000, 32, "sha256");
+      const creds = tryDecrypt(payload, legacyKey);
+      if (creds && typeof creds === "object") {
+        saveAllCredentials(creds);
+        return creds;
+      }
+    } catch {}
+
+    throw new Error("Unsupported state or unable to authenticate data");
   } catch (err) {
     console.warn(`[credentials] Warning: Could not read secure vault: ${err.message}`);
     return {};
@@ -106,7 +162,7 @@ export function getAllCredentials() {
 function saveAllCredentials(creds) {
   ensureVaultDir();
 
-  const key = deriveEncryptionKey("codemcp-secure-vault-salt-v1");
+  const key = deriveEncryptionKey();
   const iv = crypto.randomBytes(12); // Standard 96-bit IV for AES-GCM
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
 

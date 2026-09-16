@@ -5,9 +5,16 @@ import path from "node:path";
 import { z } from "zod";
 import { logger } from "../utils/logger.js";
 import { getEnv } from "../utils/env.js";
-import { PathGuardError, assertPathContained, isIgnored } from "../utils/pathGuard.js";
+import {
+  PathGuardError,
+  assertPathContained,
+  isIgnored,
+} from "../utils/pathGuard.js";
 import { recordAction } from "../services/memory.js";
-import { isApprovalRequired, verifyActionApproval } from "../services/approval.js";
+import {
+  isApprovalRequired,
+  verifyActionApproval,
+} from "../services/approval.js";
 import { createToolContext, wrapToolHandler } from "./context.js";
 
 /**
@@ -95,7 +102,8 @@ export function buildCleanEnv(cwd, customAllowed = []) {
 export function getAllowedBinaries(project = null) {
   const allowed = new Set(DEFAULT_ALLOWED_BINARIES);
 
-  const envBinaries = getEnv("ALLOWED_COMMANDS", "") || getEnv("ALLOWED_BINARIES", "");
+  const envBinaries =
+    getEnv("ALLOWED_COMMANDS", "") || getEnv("ALLOWED_BINARIES", "");
   if (envBinaries) {
     for (const b of envBinaries.split(",")) {
       const clean = b.trim().toLowerCase();
@@ -130,7 +138,7 @@ export function tokenizeCommand(cmdStr) {
   if (forbiddenShellChars.test(cmdStr)) {
     throw new PathGuardError(
       "Command contains prohibited shell operators (|, &, ;, >, <, $, `). Raw shell parsing is disabled.",
-      403
+      403,
     );
   }
 
@@ -208,7 +216,7 @@ export function validateExecution(binary, args, projectRoot, project = null) {
   if (binary.includes("/") || binary.includes("\\") || binary.includes(":")) {
     throw new PathGuardError(
       "Direct binary path execution is prohibited. Specify only the executable name from the allowlist.",
-      403
+      403,
     );
   }
 
@@ -219,28 +227,50 @@ export function validateExecution(binary, args, projectRoot, project = null) {
   if (!allowedBinaries.has(baseBinary)) {
     throw new PathGuardError(
       `Binary "${binary}" is not in the permitted allowlist. Permitted: ${Array.from(allowedBinaries).join(", ")}`,
-      403
+      403,
     );
   }
 
   // Prohibit dangerous runtime evaluation flags
   if (baseBinary === "node") {
+    const blockedNodeFlags = new Set([
+      "-e",
+      "--eval",
+      "-p",
+      "--print",
+      "-r",
+      "--require",
+      "--loader",
+      "--experimental-loader",
+      "--import",
+      "--env-file",
+      "--inspect",
+      "--inspect-brk",
+      "--inspect-wait",
+      "--openssl-config",
+    ]);
+    for (const arg of args) {
+      const flag = arg.includes("=") ? arg.slice(0, arg.indexOf("=")) : arg;
+      if (blockedNodeFlags.has(flag)) {
+        throw new PathGuardError(`Node flag "${arg}" is prohibited`, 403);
+      }
+    }
+  }
+
+  if (baseBinary === "pip" || baseBinary === "pip3") {
     for (const arg of args) {
       if (
-        arg === "-e" ||
-        arg.startsWith("-e") ||
-        arg === "--eval" ||
-        arg.startsWith("--eval=") ||
-        arg === "-p" ||
-        arg.startsWith("-p") ||
-        arg === "--print" ||
-        arg.startsWith("--print=")
+        /^https?:\/\//i.test(arg) ||
+        arg.startsWith("--index-url") ||
+        arg.startsWith("--extra-index-url") ||
+        arg.startsWith("--find-links")
       ) {
         throw new PathGuardError(
-          `Inline node evaluation flag "${arg}" is prohibited. Execute a script file inside the project instead.`,
-          403
+          `pip network install from "${arg}" is prohibited`,
+          403,
         );
       }
+      
     }
   }
 
@@ -249,8 +279,22 @@ export function validateExecution(binary, args, projectRoot, project = null) {
       if (arg === "-c" || arg.startsWith("-c")) {
         throw new PathGuardError(
           `Inline python code execution flag "-c" is prohibited. Execute a script file inside the project instead.`,
-          403
+          403,
         );
+      }
+    }
+    const mIdx = args.indexOf("-m");
+    if (mIdx !== -1) {
+      const module = args[mIdx + 1];
+      const blockedModules = new Set([
+        "http.server",
+        "pip",
+        "ensurepip",
+        "smtpd",
+        "ftplib",
+      ]);
+      if (blockedModules.has(module)) {
+        throw new PathGuardError(`python -m ${module} is prohibited`, 403);
       }
     }
   }
@@ -265,9 +309,24 @@ export function validateExecution(binary, args, projectRoot, project = null) {
       ) {
         throw new PathGuardError(
           `Unsafe git configuration flag "${arg}" is prohibited.`,
-          403
+          403,
         );
       }
+    }
+    const NETWORK_SUBCMDS = new Set([
+      "clone",
+      "fetch",
+      "pull",
+      "push",
+      "submodule",
+      "archive",
+      "ls-remote",
+    ]);
+    if (NETWORK_SUBCMDS.has(args[0]?.toLowerCase())) {
+      throw new PathGuardError(
+        `git ${args[0]} is not permitted (potential SSRF/exfiltration)`,
+        403,
+      );
     }
   }
 
@@ -281,14 +340,20 @@ export function validateExecution(binary, args, projectRoot, project = null) {
 
     // Prohibit sensitive credentials, key files, or .env anywhere in arguments
     if (
-      /(^|[\s"'`\/\\=])\.env(\.[a-zA-Z0-9_.-]+)?(\b|[\s"'`\/\\=]|$)/i.test(targetPath) ||
-      /(^|[\s"'`\/\\=])(\.npmrc|\.pypirc)(\b|[\s"'`\/\\=]|$)/i.test(targetPath) ||
+      /(^|[\s"'`\/\\=])\.env(\.[a-zA-Z0-9_.-]+)?(\b|[\s"'`\/\\=]|$)/i.test(
+        targetPath,
+      ) ||
+      /(^|[\s"'`\/\\=])(\.npmrc|\.pypirc)(\b|[\s"'`\/\\=]|$)/i.test(
+        targetPath,
+      ) ||
       /(^|[\s"'`\/\\=])\.ssh(\b|[\s"'`\/\\=]|$)/i.test(targetPath) ||
-      /\b(id_rsa|id_dsa|id_ecdsa|id_ed25519|\.codemcp|credentials\.enc)\b/i.test(targetPath)
+      /\b(id_rsa|id_dsa|id_ecdsa|id_ed25519|\.codemcp|credentials\.enc)\b/i.test(
+        targetPath,
+      )
     ) {
       throw new PathGuardError(
         `Access to protected or sensitive path "${targetPath}" is blocked`,
-        403
+        403,
       );
     }
 
@@ -298,7 +363,17 @@ export function validateExecution(binary, args, projectRoot, project = null) {
       targetPath.includes("/") ||
       targetPath.includes("\\") ||
       /^[a-zA-Z]:/.test(targetPath) ||
-      /\.(js|ts|mjs|cjs|json|py|rs|go|md|txt|html|css|yaml|yml|env)$/i.test(targetPath);
+      /\.(js|ts|mjs|cjs|json|py|rs|go|md|txt|html|css|yaml|yml|env)$/i.test(
+        targetPath,
+      );
+      
+    const URL_RE = /^(https?|git|ssh|ftp):\/\//i;
+    if (URL_RE.test(targetPath)) {
+      throw new PathGuardError(
+        `Network URLs are not permitted as arguments: "${targetPath}"`,
+        403,
+      );
+    }
 
     if (looksLikePath) {
       try {
@@ -307,7 +382,7 @@ export function validateExecution(binary, args, projectRoot, project = null) {
         if (isIgnored(contained, projectRoot)) {
           throw new PathGuardError(
             `Access to protected or ignored path "${targetPath}" is blocked`,
-            403
+            403,
           );
         }
       } catch (err) {
@@ -316,7 +391,6 @@ export function validateExecution(binary, args, projectRoot, project = null) {
         }
       }
     }
-
   }
 }
 
@@ -368,7 +442,10 @@ export function runExecFileWithTimeout({ binary, args, cwd, timeout, env }) {
       },
       (err, stdout, stderr) => {
         const duration = Date.now() - startTime;
-        const isTimedOut = Boolean(err && (err.killed || err.signal === "SIGTERM" || err.code === "ETIMEDOUT"));
+        const isTimedOut = Boolean(
+          err &&
+          (err.killed || err.signal === "SIGTERM" || err.code === "ETIMEDOUT"),
+        );
 
         if (isTimedOut && process.platform === "win32" && child.pid) {
           try {
@@ -378,10 +455,17 @@ export function runExecFileWithTimeout({ binary, args, cwd, timeout, env }) {
 
         let normalizedStderr = stderr || "";
         if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-          normalizedStderr += "\n[Error: Command output exceeded maximum buffer limit (500 KB)]";
+          normalizedStderr +=
+            "\n[Error: Command output exceeded maximum buffer limit (500 KB)]";
         }
 
-        const exitCode = isTimedOut ? 1 : typeof err?.code === "number" ? err.code : err ? 1 : 0;
+        const exitCode = isTimedOut
+          ? 1
+          : typeof err?.code === "number"
+            ? err.code
+            : err
+              ? 1
+              : 0;
 
         resolve({
           stdout: stdout || "",
@@ -390,7 +474,7 @@ export function runExecFileWithTimeout({ binary, args, cwd, timeout, env }) {
           duration,
           isTimedOut,
         });
-      }
+      },
     );
   });
 }
@@ -404,7 +488,9 @@ export function runExecFileWithTimeout({ binary, args, cwd, timeout, env }) {
  * @param {object} [project]
  */
 export function registerExecuteCommandTool(serverOrCtx, project) {
-  const ctx = serverOrCtx?.guard ? serverOrCtx : createToolContext(serverOrCtx, project);
+  const ctx = serverOrCtx?.guard
+    ? serverOrCtx
+    : createToolContext(serverOrCtx, project);
   const { server: mcpServer, projectRoot } = ctx;
 
   mcpServer.registerTool(
@@ -416,23 +502,33 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
         command: z
           .string()
           .optional()
-          .describe("The command string to execute (e.g. 'npm test', 'git status'). Tokenized safely without shell expansion."),
+          .describe(
+            "The command string to execute (e.g. 'npm test', 'git status'). Tokenized safely without shell expansion.",
+          ),
         binary: z
           .string()
           .optional()
-          .describe("The executable binary name from the permitted allowlist (e.g. 'npm', 'git', 'node')."),
+          .describe(
+            "The executable binary name from the permitted allowlist (e.g. 'npm', 'git', 'node').",
+          ),
         args: z
           .array(z.string())
           .optional()
-          .describe("Array of argument strings to pass directly to the binary."),
+          .describe(
+            "Array of argument strings to pass directly to the binary.",
+          ),
         timeoutMs: z
           .number()
           .optional()
-          .describe("Command timeout in milliseconds (default: 30000 ms, min: 1000, max: 60000)."),
+          .describe(
+            "Command timeout in milliseconds (default: 30000 ms, min: 1000, max: 60000).",
+          ),
         summary: z
           .string()
           .optional()
-          .describe("Optional 1-sentence summary of what this command does and why it was run."),
+          .describe(
+            "Optional 1-sentence summary of what this command does and why it was run.",
+          ),
       },
     },
     wrapToolHandler("EXEC", async (toolArgs) => {
@@ -446,7 +542,10 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
       }
 
       if (!binary) {
-        throw new PathGuardError("Either 'command' or 'binary' parameter must be provided", 400);
+        throw new PathGuardError(
+          "Either 'command' or 'binary' parameter must be provided",
+          400,
+        );
       }
 
       // Ensure projectRoot exists and assert containment of cwd
@@ -456,7 +555,10 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
       validateExecution(binary, args, cwd, ctx.project);
 
       const commandDisplay = `${binary} ${args.join(" ")}`.trim();
-      const timeout = Math.min(Math.max(toolArgs?.timeoutMs || 30000, 1000), 60000);
+      const timeout = Math.min(
+        Math.max(toolArgs?.timeoutMs || 30000, 1000),
+        60000,
+      );
 
       // Route through interactive approval workflow
       if (isApprovalRequired(ctx.project, "EXEC")) {
@@ -512,7 +614,9 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
       const aiSummary = toolArgs?.summary?.trim() || toolArgs?.purpose?.trim();
       const outputClean = (stdout || stderr || "").replace(/\s+/g, " ").trim();
       const preview = outputClean ? outputClean.slice(0, 100) : "";
-      const finalSummary = aiSummary || `Executed "${commandDisplay}" -> exit ${exitCode}${preview ? `: ${preview}` : ""}`;
+      const finalSummary =
+        aiSummary ||
+        `Executed "${commandDisplay}" -> exit ${exitCode}${preview ? `: ${preview}` : ""}`;
 
       logger.toolExec(commandDisplay, exitCode, duration);
       recordAction(ctx.project || projectRoot, {
@@ -547,7 +651,7 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
         },
         content: [{ type: "text", text: responseText }],
       };
-    })
+    }),
   );
 }
 

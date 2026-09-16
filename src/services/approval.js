@@ -69,7 +69,7 @@ async function promptApproval({
 
   // If not a TTY terminal, check non-interactive policy
   if (!process.stdin.isTTY) {
-    const nonInteractivePolicy = (getEnv("APPROVAL_NON_INTERACTIVE", "auto") || "").toLowerCase();
+    const nonInteractivePolicy = (getEnv("APPROVAL_NON_INTERACTIVE", "reject") || "").toLowerCase();
     if (nonInteractivePolicy === "reject" || nonInteractivePolicy === "deny" || nonInteractivePolicy === "false") {
       return {
         approved: false,
