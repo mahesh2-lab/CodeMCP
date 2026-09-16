@@ -121,6 +121,8 @@ async function getOrCreateSession(sessionId, req, isInit = false) {
   let sessionData;
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => effectiveId,
+    // Keep tunnel and proxy connections active while the client is idle.
+    keepAliveMs: 15_000,
     onsessioninitialized: (newId) => {
       sessions.set(newId, sessionData);
       logger.sessionStart(newId, client);
@@ -140,7 +142,13 @@ async function getOrCreateSession(sessionId, req, isInit = false) {
   };
 
   await server.connect(transport);
-  sessionData = { server, transport, project, client, lastAccessed: Date.now() };
+  sessionData = {
+    server,
+    transport,
+    project,
+    client,
+    lastAccessed: Date.now(),
+  };
   sessions.set(effectiveId, sessionData);
 
   if (!isInit) {
