@@ -1,6 +1,6 @@
 {
   "name": "@mahesh2-lab/codemcp",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Project-scoped MCP server providing context, file access, and execution tools for AI assistants and MCP clients",
   "homepage": "https://code-mcp.vercel.app/",
   "repository": {
