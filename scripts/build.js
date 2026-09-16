@@ -27,10 +27,14 @@ async function build() {
   fs.mkdirSync(distDir, { recursive: true });
 
   console.log("📦 Preparing package staging folder...");
+  if (fs.existsSync(packageDir)) {
+    fs.rmSync(packageDir, { recursive: true, force: true });
+  }
   fs.mkdirSync(packageDir, { recursive: true });
 
-  const packageReadmeSource = fs.existsSync(path.join(rootDir, "README.md"));
-  if (packageReadmeSource) {
+  const packageReadmeSource = path.join(rootDir, "README.md");
+
+  if (fs.existsSync(packageReadmeSource)) {
     fs.copyFileSync(packageReadmeSource, path.join(packageDir, "README.md"));
   }
 
