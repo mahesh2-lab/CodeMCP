@@ -14,6 +14,17 @@ export function getProjectRoot() {
   return path.resolve(getEnv("PROJECT_ROOT", "."));
 }
 
+function readIgnoreFile(filePath, patterns) {
+  if (!fs.existsSync(filePath)) return;
+
+  try {
+    for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
+      const pattern = line.trim();
+      if (pattern && !pattern.startsWith("#")) patterns.add(pattern);
+    }
+  } catch {}
+}
+
 export function getIgnorePatterns(customRoot = getProjectRoot()) {
   const patterns = new Set([
     "node_modules",
@@ -25,30 +36,14 @@ export function getIgnorePatterns(customRoot = getProjectRoot()) {
     ".next",
     "venv",
     "__pycache__",
-    ...getEnv("IGNORED_DIRS", "").split(",").map((s) => s.trim()).filter(Boolean),
+    ...getEnv("IGNORED_DIRS", "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
   ]);
 
-  const mcpIgnorePath = path.join(customRoot, ".mcpignore");
-  if (fs.existsSync(mcpIgnorePath)) {
-    try {
-      const lines = fs.readFileSync(mcpIgnorePath, "utf8").split("\n");
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith("#")) patterns.add(trimmed);
-      }
-    } catch {}
-  }
-
-  const gitIgnorePath = path.join(customRoot, ".gitignore");
-  if (fs.existsSync(gitIgnorePath)) {
-    try {
-      const lines = fs.readFileSync(gitIgnorePath, "utf8").split("\n");
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith("#")) patterns.add(trimmed);
-      }
-    } catch {}
-  }
+  readIgnoreFile(path.join(customRoot, ".mcpignore"), patterns);
+  readIgnoreFile(path.join(customRoot, ".gitignore"), patterns);
 
   return patterns;
 }
@@ -57,17 +52,20 @@ export function isIgnored(targetPath, customRoot = getProjectRoot()) {
   const normalized = toPosix(targetPath);
   const base = path.basename(targetPath);
 
-  // Always block .env and its variants (.env.local, .env.production, etc.) anywhere in path
-  if (base === ".env" || base.startsWith(".env.") || /(^|\/)\.env(\.|$)/i.test(normalized)) {
+  if (
+    /(^|\/)\.env(?:\.[^/]*)?(\/|$)/i.test(normalized) ||
+    /^\.env(?:\..+)?$/i.test(base)
+  )
     return true;
-  }
 
   if (base === ".npmrc" || base === ".pypirc") return true;
-  // Always block internal repository metadata and credentials
   if (/(^|\/)\.git(\/|$)/i.test(normalized)) return true;
   if (/(^|\/)\.codemcp(\/|$)/i.test(normalized)) return true;
   if (/(^|\/)\.ssh(\/|$)/i.test(normalized)) return true;
-  if (/\b(id_rsa|id_dsa|id_ecdsa|id_ed25519|credentials\.enc)\b/i.test(normalized)) return true;
+  if (
+    /\b(id_rsa|id_dsa|id_ecdsa|id_ed25519|credentials\.enc)\b/i.test(normalized)
+  )
+    return true;
 
   const rel = toPosix(path.relative(customRoot, targetPath));
   const segments = rel.split("/").filter(Boolean);
@@ -78,10 +76,16 @@ export function isIgnored(targetPath, customRoot = getProjectRoot()) {
     if (!cleanPat) continue;
     if (base === cleanPat) return true;
     if (segments.includes(cleanPat)) return true;
-    if (cleanPat.endsWith("/*") && normalized.includes(cleanPat.slice(0, -2))) return true;
+    if (cleanPat.endsWith("/*") && normalized.includes(cleanPat.slice(0, -2)))
+      return true;
     if (rel === cleanPat || rel.startsWith(cleanPat + "/")) return true;
   }
   return false;
+}
+
+export function isProtectedFromDeletion(targetPath) {
+  const normalized = toPosix(targetPath);
+  return /(^|\/)codemcp(?:\.[^/]+)?$/i.test(normalized);
 }
 
 export function getAllowedExtensions() {
@@ -102,7 +106,9 @@ export function assertPathContained(targetPath, customRoot = getProjectRoot()) {
   }
 
   const rootResolved = path.resolve(customRoot);
-  const resolved = path.isAbsolute(clean) ? path.resolve(clean) : path.resolve(rootResolved, clean);
+  const resolved = path.isAbsolute(clean)
+    ? path.resolve(clean)
+    : path.resolve(rootResolved, clean);
 
   // 1. Lexical boundary check
   const relLexical = path.relative(rootResolved, resolved);
@@ -123,7 +129,9 @@ export function assertPathContained(targetPath, customRoot = getProjectRoot()) {
   while (checkTarget && !fs.existsSync(checkTarget)) {
     const parent = path.dirname(checkTarget);
     if (!parent || parent === checkTarget) break;
-    remainingSuffix = remainingSuffix ? path.join(path.basename(checkTarget), remainingSuffix) : path.basename(checkTarget);
+    remainingSuffix = remainingSuffix
+      ? path.join(path.basename(checkTarget), remainingSuffix)
+      : path.basename(checkTarget);
     checkTarget = parent;
   }
 
@@ -134,7 +142,9 @@ export function assertPathContained(targetPath, customRoot = getProjectRoot()) {
     } catch {
       throw new PathGuardError("Unable to resolve canonical path", 403);
     }
-    const finalCanonical = remainingSuffix ? path.join(realTarget, remainingSuffix) : realTarget;
+    const finalCanonical = remainingSuffix
+      ? path.join(realTarget, remainingSuffix)
+      : realTarget;
     const relReal = path.relative(realRoot, finalCanonical);
     if (relReal.startsWith("..") || path.isAbsolute(relReal)) {
       throw new PathGuardError("Path symlink escapes project root", 403);
@@ -155,7 +165,11 @@ export function resolveSafe(relativePath, customRoot = getProjectRoot()) {
     throw new PathGuardError("Invalid path", 400);
   }
 
-  if (path.isAbsolute(clean) || /^[a-zA-Z]:/.test(clean) || clean.startsWith("\\\\")) {
+  if (
+    path.isAbsolute(clean) ||
+    /^[a-zA-Z]:/.test(clean) ||
+    clean.startsWith("\\\\")
+  ) {
     throw new PathGuardError("Absolute paths are not allowed", 400);
   }
 
@@ -168,9 +182,15 @@ export function isAllowedFile(filePath) {
   return allowed.includes(path.extname(filePath).toLowerCase());
 }
 
-export function assertExistsAndAllowed(absolutePath, customRoot = getProjectRoot()) {
+export function assertExistsAndAllowed(
+  absolutePath,
+  customRoot = getProjectRoot(),
+) {
   if (isIgnored(absolutePath, customRoot)) {
-    throw new PathGuardError("Access to this file is blocked (ignored or sensitive)", 403);
+    throw new PathGuardError(
+      "Access to this file is blocked (ignored or sensitive)",
+      403,
+    );
   }
 
   if (!fs.existsSync(absolutePath)) {
@@ -231,7 +251,12 @@ export function toPosix(p) {
   return typeof p === "string" ? p.replace(/\\/g, "/") : "";
 }
 
-export function walk(dirAbsolute, dirRelative, results, customRoot = getProjectRoot()) {
+export function walk(
+  dirAbsolute,
+  dirRelative,
+  results,
+  customRoot = getProjectRoot(),
+) {
   const entries = fs.readdirSync(dirAbsolute, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dirAbsolute, entry.name);
@@ -279,9 +304,9 @@ export function createScopedPathGuard(customRoot = getProjectRoot()) {
     assertPathContained: (targetPath) => assertPathContained(targetPath, root),
     assertExistsAndAllowed: (absPath) => assertExistsAndAllowed(absPath, root),
     isIgnored: (targetPath) => isIgnored(targetPath, root),
+    isProtectedFromDeletion,
     walk: (dirAbs, dirRel, results) => walk(dirAbs, dirRel, results, root),
     getIgnorePatterns: () => getIgnorePatterns(root),
     isBinaryBuffer,
   };
 }
-

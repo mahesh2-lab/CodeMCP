@@ -14,7 +14,12 @@ import {
   VAULT_FILE,
 } from "../src/utils/credentials.js";
 import { getCustomHelpText } from "../src/utils/help.js";
-import { startServer, app, setupShutdownHandlers } from "../src/server.js";
+import {
+  handleShutdown,
+  startServer,
+  app,
+  setupShutdownHandlers,
+} from "../src/server.js";
 setupShutdownHandlers();
 export { startServer, app };
 
@@ -23,7 +28,9 @@ const packageRoot = path.resolve(__dirname, "..");
 
 let pkgVersion = "1.1.2";
 try {
-  const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"),
+  );
   if (pkg.version) pkgVersion = pkg.version;
 } catch {}
 
@@ -31,10 +38,37 @@ const program = new Command();
 
 program
   .name("codemcp")
-  .description(pc.cyan("Project-scoped MCP server providing context, file access, and execution tools for AI assistants"))
+  .description(
+    pc.cyan(
+      "Project-scoped MCP server providing context, file access, and execution tools for AI assistants",
+    ),
+  )
   .version(pkgVersion);
 
 program.helpInformation = () => getCustomHelpText(pkgVersion);
+
+function enableQuitKey() {
+  if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== "function") {
+    return;
+  }
+
+  const onData = (data) => {
+    const key = data.toString();
+    if (key.toLowerCase() !== "q" && key !== "\u0003") return;
+
+    process.stdin.setRawMode(false);
+    process.stdin.pause();
+    void handleShutdown(key === "\u0003" ? "SIGINT" : "Q");
+  };
+
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.on("data", onData);
+  process.once("exit", () => {
+    process.stdin.off("data", onData);
+    if (process.stdin.isTTY) process.stdin.setRawMode(false);
+  });
+}
 
 async function launchServer(targetPath, options = {}) {
   if (options.tunnel === false) {
@@ -47,9 +81,12 @@ async function launchServer(targetPath, options = {}) {
     process.env.PORT = String(options.port);
   }
 
-  const approvalFlag = options.approval !== undefined 
-    ? options.approval 
-    : (options.ask !== undefined ? options.ask : options.confirm);
+  const approvalFlag =
+    options.approval !== undefined
+      ? options.approval
+      : options.ask !== undefined
+        ? options.ask
+        : options.confirm;
 
   if (approvalFlag !== undefined) {
     if (typeof approvalFlag === "string") {
@@ -76,7 +113,11 @@ async function launchServer(targetPath, options = {}) {
 
   const configPath = path.join(targetDir, "codemcp.json");
   if (!fs.existsSync(configPath)) {
-    console.log(pc.yellow(`No codemcp.json found in ${targetDir}. Initializing project...\n`));
+    console.log(
+      pc.yellow(
+        `No codemcp.json found in ${targetDir}. Initializing project...\n`,
+      ),
+    );
     await initProject(targetDir, options);
     if (!fs.existsSync(configPath)) {
       process.exit(0);
@@ -84,8 +125,11 @@ async function launchServer(targetPath, options = {}) {
     console.log();
   }
 
-
   await startServer(options);
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    console.log(pc.dim("  Press q to quit the server.\n"));
+    enableQuitKey();
+  }
 }
 
 program
@@ -95,15 +139,20 @@ program
   .option("--no-tunnel", "Disable automatic ngrok tunnel")
   .option("--no-notify", "Disable OS desktop notifications")
   .option("-y, --yes", "Skip interactive prompts and use detected defaults")
-  .option("-a, --approval [mode]", "Require confirmation before applying file modifications")
+  .option(
+    "-a, --approval [mode]",
+    "Require confirmation before applying file modifications",
+  )
   .option("-c, --confirm", "Alias for -a / --approval")
   .option("--ask", "Alias for -a / --approval")
-  .option("--no-approval", "Disable confirmation prompts and auto-apply modifications")
+  .option(
+    "--no-approval",
+    "Disable confirmation prompts and auto-apply modifications",
+  )
   .option("--no-confirm", "Alias for --no-approval")
   .action(async (targetPath, options) => {
     await launchServer(targetPath, options);
   });
-
 
 program
   .command("init [path]")
@@ -129,7 +178,9 @@ program
 program
   .command("approval [state]")
   .alias("approve")
-  .description("View or toggle approval in codemcp.json (e.g. 'codemcp approval on' or 'codemcp approval off')")
+  .description(
+    "View or toggle approval in codemcp.json (e.g. 'codemcp approval on' or 'codemcp approval off')",
+  )
   .action((state) => {
     const configPath = path.join(process.cwd(), "codemcp.json");
     if (!fs.existsSync(configPath)) {
@@ -139,16 +190,32 @@ program
     try {
       const manifest = JSON.parse(fs.readFileSync(configPath, "utf8"));
       if (!state) {
-        const current = manifest.approval ? pc.green("ON (Ask before changes)") : pc.dim("OFF (Auto-apply)");
+        const current = manifest.approval
+          ? pc.green("ON (Ask before changes)")
+          : pc.dim("OFF (Auto-apply)");
         console.log(`\n  Approval is currently: ${current}`);
-        console.log(`  To change: ${pc.cyan("codemcp approval on")} or ${pc.cyan("codemcp approval off")}\n`);
+        console.log(
+          `  To change: ${pc.cyan("codemcp approval on")} or ${pc.cyan("codemcp approval off")}\n`,
+        );
         return;
       }
       const normalized = state.toLowerCase();
-      const enable = normalized === "on" || normalized === "true" || normalized === "yes" || normalized === "1";
+      const enable =
+        normalized === "on" ||
+        normalized === "true" ||
+        normalized === "yes" ||
+        normalized === "1";
       manifest.approval = enable;
-      fs.writeFileSync(configPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
-      console.log(pc.green(`✔ Approval set to ${enable ? pc.bold("ON (Ask before changes)") : pc.dim("OFF (Auto-apply)")} in codemcp.json\n`));
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify(manifest, null, 2) + "\n",
+        "utf8",
+      );
+      console.log(
+        pc.green(
+          `✔ Approval set to ${enable ? pc.bold("ON (Ask before changes)") : pc.dim("OFF (Auto-apply)")} in codemcp.json\n`,
+        ),
+      );
     } catch (err) {
       console.error(pc.red(`Failed to update codemcp.json: ${err.message}`));
     }
@@ -156,7 +223,9 @@ program
 
 const credCmd = program
   .command("credentials")
-  .description("Manage encrypted credentials stored in ~/.codemcp/credentials.enc")
+  .description(
+    "Manage encrypted credentials stored in ~/.codemcp/credentials.enc",
+  )
   .action(() => {
     printCredentialsStatus();
   });
@@ -172,7 +241,8 @@ function printCredentialsStatus() {
   }
   for (const key of keys) {
     const val = creds[key];
-    const masked = val.length > 8 ? `${val.slice(0, 4)}...${val.slice(-4)}` : "********";
+    const masked =
+      val.length > 8 ? `${val.slice(0, 4)}...${val.slice(-4)}` : "********";
     console.log(`  ${pc.cyan(key.padEnd(20))} : ${pc.green(masked)}`);
   }
   console.log();
@@ -213,16 +283,28 @@ credCmd
     console.log(pc.green("[OK] Cleared all credentials from secure vault."));
   });
 
-
-const explicitCommands = new Set(["start", "init", "info", "credentials", "approval", "approve", "help"]);
+const explicitCommands = new Set([
+  "start",
+  "init",
+  "info",
+  "credentials",
+  "approval",
+  "approve",
+  "help",
+]);
 const helpOrVersion = new Set(["--help", "-h", "--version", "-v", "help"]);
 const firstArg = process.argv[2];
 
 const isOption = Boolean(firstArg && firstArg.startsWith("-"));
-const isExistingPath = Boolean(firstArg && fs.existsSync(path.resolve(process.cwd(), firstArg)));
+const isExistingPath = Boolean(
+  firstArg && fs.existsSync(path.resolve(process.cwd(), firstArg)),
+);
 
 if (!firstArg || isOption || isExistingPath) {
-  if (!firstArg || (!explicitCommands.has(firstArg) && !helpOrVersion.has(firstArg))) {
+  if (
+    !firstArg ||
+    (!explicitCommands.has(firstArg) && !helpOrVersion.has(firstArg))
+  ) {
     process.argv.splice(2, 0, "start");
   }
 }

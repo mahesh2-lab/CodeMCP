@@ -40,7 +40,10 @@ export async function validateApiKey(apiKey) {
     const errorMsg = data?.msg || `ngrok API returned HTTP ${res.status}`;
     return { ok: false, error: errorMsg };
   } catch (err) {
-    return { ok: false, error: `Failed to connect to ngrok API: ${err.message}` };
+    return {
+      ok: false,
+      error: `Failed to connect to ngrok API: ${err.message}`,
+    };
   }
 }
 
@@ -49,14 +52,19 @@ export function openBrowser(url) {
     process.platform === "darwin"
       ? `open "${url}"`
       : process.platform === "win32"
-      ? `start "" "${url}"`
-      : `xdg-open "${url}"`;
+        ? `start "" "${url}"`
+        : `xdg-open "${url}"`;
   try {
     exec(cmd);
   } catch {}
 }
 
 let cachedApiKey = null;
+let endpointLimitReached = false;
+
+export function isEndpointLimitReached() {
+  return endpointLimitReached;
+}
 
 /**
  * Checks for NGROK_API_KEY, verifies that it works, and prompts the user if missing or invalid.
@@ -71,13 +79,17 @@ export async function ensureApiKey() {
       cachedApiKey = apiKey;
       return apiKey;
     }
-    logger.tunnelWarn(`Stored NGROK_API_KEY is not working: ${check.error}. Re-authenticating...`);
+    logger.tunnelWarn(
+      `Stored NGROK_API_KEY is not working: ${check.error}. Re-authenticating...`,
+    );
     deleteCredential("NGROK_API_KEY");
     apiKey = null;
   }
 
   const url = "https://dashboard.ngrok.com/api-keys";
-  console.log(`\nOpening ${pc.cyan(url)} in your browser to create or view your API key...\n`);
+  console.log(
+    `\nOpening ${pc.cyan(url)} in your browser to create or view your API key...\n`,
+  );
 
   openBrowser(url);
 
@@ -92,19 +104,28 @@ export async function ensureApiKey() {
 
       if (p.isCancel(response) || !response?.trim()) {
         p.cancel("Setup cancelled. Missing NGROK_API_KEY.");
-        console.log(pc.dim("  Tip: To run locally without a public tunnel, use: ") + pc.cyan("codemcp --no-tunnel\n"));
+        console.log(
+          pc.dim("  Tip: To run locally without a public tunnel, use: ") +
+            pc.cyan("codemcp --no-tunnel\n"),
+        );
         process.exit(0);
       }
 
       inputKey = response.trim();
     } else {
       const readline = await import("node:readline/promises");
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
       const response = await rl.question("Paste your ngrok API Key here: ");
       rl.close();
       if (!response?.trim()) {
         console.log(pc.yellow("Setup cancelled. Missing NGROK_API_KEY."));
-        console.log(pc.dim("  Tip: To run locally without a public tunnel, use: ") + pc.cyan("codemcp --no-tunnel\n"));
+        console.log(
+          pc.dim("  Tip: To run locally without a public tunnel, use: ") +
+            pc.cyan("codemcp --no-tunnel\n"),
+        );
         process.exit(0);
       }
       inputKey = response.trim();
@@ -120,21 +141,27 @@ export async function ensureApiKey() {
       apiKey = inputKey;
       cachedApiKey = apiKey;
       setEnv("NGROK_API_KEY", apiKey);
-      logger.tunnelInfo("Saved valid NGROK_API_KEY to secure user vault (~/.codemcp/credentials.enc)");
+      logger.tunnelInfo(
+        "Saved valid NGROK_API_KEY to secure user vault (~/.codemcp/credentials.enc)",
+      );
     } else {
       spinner?.stop(pc.red(`✖ Invalid ngrok API key: ${check.error}`));
       if (!process.stdin.isTTY) {
-        console.error(pc.red(`[ngrok] API key validation failed: ${check.error}`));
+        console.error(
+          pc.red(`[ngrok] API key validation failed: ${check.error}`),
+        );
         process.exit(1);
       }
-      console.log(pc.yellow("  Please check your key at https://dashboard.ngrok.com/api-keys and try again.\n"));
+      console.log(
+        pc.yellow(
+          "  Please check your key at https://dashboard.ngrok.com/api-keys and try again.\n",
+        ),
+      );
     }
   }
 
   return apiKey;
 }
-
-
 
 /**
  * Gets the existing authtoken or provisions a new one via the ngrok API.
@@ -159,7 +186,9 @@ export async function getOrCreateToken(description = "codemcp-agent") {
     if (cred.token) {
       token = cred.token;
       setEnv("NGROK_AUTHTOKEN", token);
-      logger.tunnelInfo("Provisioned new authtoken and saved to secure user vault (~/.codemcp/credentials.enc)");
+      logger.tunnelInfo(
+        "Provisioned new authtoken and saved to secure user vault (~/.codemcp/credentials.enc)",
+      );
     }
   } catch (err) {
     logger.tunnelError("Failed to create ngrok authtoken", err);
@@ -176,7 +205,8 @@ export async function createReservedDomain(options = {}) {
   if (!apiKey) return null;
 
   try {
-    const body = typeof options === "string" ? { description: options } : options;
+    const body =
+      typeof options === "string" ? { description: options } : options;
     const res = await fetch("https://api.ngrok.com/reserved_domains", {
       method: "POST",
       headers: getHeaders(apiKey),
@@ -185,7 +215,9 @@ export async function createReservedDomain(options = {}) {
 
     if (res?.domain) {
       setEnv("NGROK_DOMAIN", res.domain);
-      logger.tunnelInfo(`Created reserved domain (${res.domain}) and saved to secure user vault (~/.codemcp/credentials.enc)`);
+      logger.tunnelInfo(
+        `Created reserved domain (${res.domain}) and saved to secure user vault (~/.codemcp/credentials.enc)`,
+      );
       return res.domain;
     }
 
@@ -219,7 +251,9 @@ export async function getOrCreateDomain(options = "codemcp-agent") {
     domain = reserved_domains?.[0]?.domain;
     if (domain) {
       setEnv("NGROK_DOMAIN", domain);
-      logger.tunnelInfo(`Found reserved domain (${domain}) and saved to secure user vault (~/.codemcp/credentials.enc)`);
+      logger.tunnelInfo(
+        `Found reserved domain (${domain}) and saved to secure user vault (~/.codemcp/credentials.enc)`,
+      );
       return domain;
     }
 
@@ -251,8 +285,17 @@ export async function startTunnel(port, description = "codemcp-agent") {
     if (domain) config.domain = domain;
 
     const listener = await ngrok.forward(config);
+    endpointLimitReached = false;
     return listener;
   } catch (err) {
+    const message = String(err?.message || err);
+    if (/more than \d+ endpoints|endpoint.*limit|quota/i.test(message)) {
+      endpointLimitReached = true;
+      logger.tunnelWarn(
+        "ngrok endpoint limit reached. Continuing with the local MCP URL. Close unused ngrok endpoints or run with --no-tunnel.",
+      );
+      return null;
+    }
     logger.tunnelError("Failed to start ngrok tunnel", err);
     return null;
   }

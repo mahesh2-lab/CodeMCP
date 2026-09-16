@@ -40,49 +40,9 @@ app.use(routes);
 export let tunnelListener = null;
 export let httpServer = null;
 export let PORT = 4173;
-let tunnelMonitorGeneration = 0;
-let tunnelReconnectTimer = null;
 
 /** All active sockets — tracked so they can be destroyed immediately on shutdown */
 const openSockets = new Set();
-
-function scheduleTunnelReconnect(port, generation) {
-  tunnelReconnectTimer = setTimeout(async () => {
-    tunnelReconnectTimer = null;
-    if (isShuttingDown || generation !== tunnelMonitorGeneration) return;
-
-    try {
-      const replacement = await startTunnel(port);
-      if (replacement) {
-        tunnelListener = replacement;
-        logger.tunnelInfo("Tunnel reconnected.");
-        monitorTunnel(port, replacement);
-        return;
-      }
-    } catch (err) {
-      logger.tunnelError("Tunnel reconnect attempt failed", err);
-    }
-
-    scheduleTunnelReconnect(port, generation);
-  }, 1000);
-  tunnelReconnectTimer.unref?.();
-}
-
-function monitorTunnel(port, listener) {
-  const generation = ++tunnelMonitorGeneration;
-
-  listener
-    .join()
-    .catch((err) => {
-      logger.tunnelError("ngrok tunnel stopped unexpectedly", err);
-    })
-    .finally(() => {
-      if (isShuttingDown || generation !== tunnelMonitorGeneration) return;
-
-      logger.tunnelWarn("Tunnel disconnected. Reconnecting automatically...");
-      scheduleTunnelReconnect(port, generation);
-    });
-}
 
 export async function startServer(options = {}) {
   const requestedPort =
@@ -121,9 +81,6 @@ export async function startServer(options = {}) {
 
       const project = getActiveProject();
       tunnelListener = await startTunnel(PORT);
-      if (tunnelListener) {
-        monitorTunnel(PORT, tunnelListener);
-      }
 
       const globalUrl = tunnelListener
         ? `${typeof tunnelListener.url === "function" ? tunnelListener.url() : tunnelListener.url}/mcp`
@@ -190,11 +147,6 @@ export async function handleShutdown(signal = "SIGINT") {
     process.exit(130);
   }
   isShuttingDown = true;
-  tunnelMonitorGeneration++;
-  if (tunnelReconnectTimer) {
-    clearTimeout(tunnelReconnectTimer);
-    tunnelReconnectTimer = null;
-  }
 
   logger.serverInfo(`Received ${signal} — shutting down...`);
 
