@@ -11,28 +11,11 @@ import { getClientSource } from "../utils/clientInfo.js";
 const router = Router();
 export const sessions = new Map();
 
-/** Session inactivity timeout (default: 30 minutes) */
-export const SESSION_TTL_MS = 30 * 60 * 1000;
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
-
 /**
- * Sweeps the active sessions map and evicts sessions that have had no activity
- * within SESSION_TTL_MS, preventing memory leaks from abrupt client or tunnel disconnects.
+ * Sessions stay available until the client, transport, or server explicitly
+ * closes them. This avoids forcing long-lived MCP clients to reconnect.
  */
-export function cleanupInactiveSessions(now = Date.now()) {
-  for (const [id, session] of sessions.entries()) {
-    if (now - (session.lastAccessed || 0) > SESSION_TTL_MS) {
-      logger.sessionEnd(id, session.client);
-      try {
-        session.transport?.close?.();
-      } catch {}
-      sessions.delete(id);
-    }
-  }
-}
-
-const cleanupTimer = setInterval(cleanupInactiveSessions, CLEANUP_INTERVAL_MS);
-cleanupTimer.unref();
+export function cleanupInactiveSessions() {}
 
 async function executeWithActiveClient(clientName, fn) {
   logger.setActiveClient(clientName);
