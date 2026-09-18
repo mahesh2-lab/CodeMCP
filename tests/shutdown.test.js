@@ -1,7 +1,11 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { startServer, handleShutdown, resetShutdownState, httpServer } from "../src/server.js";
+import {
+  startServer,
+  handleShutdown,
+  resetShutdownState,
+} from "../src/server.js";
 
 describe("Server Shutdown", () => {
   let originalExit;
@@ -51,7 +55,10 @@ describe("Server Shutdown", () => {
     // Second signal during shutdown triggers immediate force quit
     await handleShutdown("SIGINT");
 
-    assert.ok(exitCodes.includes(130), "process.exit should be called with 130 on second Ctrl+C");
+    assert.ok(
+      exitCodes.includes(130),
+      "process.exit should be called with 130 on second Ctrl+C",
+    );
     await shutdownPromise;
   });
 
@@ -60,6 +67,10 @@ describe("Server Shutdown", () => {
     await startServer({ port: 0 });
 
     await handleShutdown("SIGTERM");
-    assert.equal(exitCode, 0, "process.exit should be called with 0 on SIGTERM");
+    assert.equal(
+      exitCode,
+      0,
+      "process.exit should be called with 0 on SIGTERM",
+    );
   });
 });

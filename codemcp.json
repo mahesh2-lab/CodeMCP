@@ -3,6 +3,6 @@
   "name": "@mahesh2-lab/codemcp",
   "description": "Project-scoped MCP server providing context, file access, and execution tools for AI assistants and MCP clients",
   "permission": "both",
-  "approval": false,
+  "approval": true,
   "contextFile": "CONTEXT.md"
 }

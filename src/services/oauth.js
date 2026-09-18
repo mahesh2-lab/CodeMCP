@@ -26,8 +26,8 @@ function loadPersistedClients() {
         clientStore.set(client.client_id, client);
       }
     }
-  } catch {
-    // Ignore invalid persisted data and allow new registrations to proceed.
+  } catch (err) {
+    logger.serverWarn?.(`Failed to parse persisted OAuth clients: ${err.message}`);
   }
 }
 
@@ -112,12 +112,8 @@ export function getBaseUrl(req) {
  * @returns {string}
  */
 export function base64UrlEncode(input) {
-  const buffer = Buffer.isBuffer(input) ? input : Buffer.from(input, "utf8");
-  return buffer
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  const buffer = Buffer.isBuffer(input) ? input : Buffer.from(String(input ?? ""), "utf8");
+  return buffer.toString("base64url");
 }
 
 /**
@@ -126,11 +122,7 @@ export function base64UrlEncode(input) {
  * @returns {Buffer}
  */
 export function base64UrlDecode(str) {
-  let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
-  while (base64.length % 4) {
-    base64 += "=";
-  }
-  return Buffer.from(base64, "base64");
+  return Buffer.from(String(str ?? ""), "base64url");
 }
 
 /**

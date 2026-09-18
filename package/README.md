@@ -44,14 +44,15 @@ CodeMCP gives an assistant a bounded view of a project, with tools for inspectin
 - **MCP tools:** Inspect files, search code, write and delete files, run safe commands, and manage project context and memory.
 - **Authenticated HTTP:** Connect through Streamable HTTP with OAuth 2.0, PKCE, and bearer tokens.
 - **Permission modes:** Choose `read`, `write`, or `both` for each project.
-- **Optional ngrok tunnel:** Give remote MCP clients a public HTTPS endpoint.
-- **Approval prompts:** Review file changes, deletions, and commands before they run.
+- **Self-healing ngrok tunnel:** Automatically cleans up orphaned background processes and recovers from "already online" endpoint conflicts.
+- **Safe-by-default approval:** Interactive terminal review with git-style diffs for file changes, deletions, and commands.
 - **Cross-assistant memory:** Save handoffs and recent workspace activity in `.codemcp/memory.json`.
-- **Security sandbox:** Block path traversal, sensitive files, symlink escapes, unsafe commands, and secret environment variables.
+- **Hardened sandbox:** Strict lexical and symlink containment, sensitive file ignores (`.env`, `.ssh`, `.git`), command allowlisting, and config protection.
 - **Fast search:** Use ripgrep with a JavaScript fallback and ignored-file filtering.
-- **Credential vault:** Store generated credentials securely outside the project.
+- **Credential vault:** Store generated credentials securely outside the project in `~/.codemcp/credentials.enc`.
+- **Zero-bloat runtime:** Native Node.js 18+ standard library (native `base64url`, native crypto, native test runner) without frontend framework bloat.
 - **Notifications and logs:** See client connections, tool activity, blocked actions, and native desktop alerts.
-- **Developer tooling:** Use CLI setup commands, watch mode, tests, esbuild builds, and CI for Node 18, 20, and 22.
+- **Developer tooling:** Use CLI setup commands, watch mode, 37 automated tests, esbuild builds, and CI for Node 18, 20, and 22.
 
 ## Requirements
 
@@ -147,7 +148,7 @@ codemcp credentials set NGROK_API_KEY <your-ngrok-api-key>
   "name": "My project",
   "description": "Project overview and guidelines for AI assistants.",
   "permission": "both",
-  "approval": false,
+  "approval": true,
   "contextFile": "CONTEXT.md"
 }
 ```
@@ -196,7 +197,7 @@ CodeMCP implements the following OAuth endpoints:
 | `/mcp` | `POST`, `GET`, `DELETE` | Authenticated Streamable HTTP MCP traffic and session lifecycle. |
 | `/health` | `GET` | Unauthenticated liveness response containing `status` and `projectRoot`. |
 
-An OAuth-capable MCP client should use the discovery metadata, register itself, generate a PKCE `S256` challenge, open `/authorize`, and ask for the owner password shown at server startup. The resulting bearer token is then used for `/mcp`. Authorization codes expire after five minutes and are single-use. The server keeps client registrations, authorization codes, and MCP sessions in memory; restart requires clients to authenticate again.
+An OAuth-capable MCP client should use the discovery metadata, register itself, generate a PKCE `S256` challenge, open `/authorize`, and ask for the owner password shown at server startup. The resulting bearer token is then used for `/mcp`. Authorization codes expire after five minutes and are single-use. The server persists client registrations and JWT signing secrets in the secure user vault (`~/.codemcp/credentials.enc`), allowing registered clients to re-authenticate seamlessly across server restarts. Active MCP sessions and unconsumed authorization codes remain ephemeral in memory.
 
 For a browser or basic HTTP check, an authenticated `GET /mcp` returns a JSON status object. An unauthenticated request returns `401` and a `WWW-Authenticate` header containing the protected-resource metadata URL.
 
@@ -232,12 +233,13 @@ git npm npx pnpm yarn node python python3 pip pytest cargo rustc go tsc esbuild 
 
 ## Approval workflow
 
-Approval is disabled by default in a newly initialized project. Enable it in configuration or at launch:
+Approval is **enabled by default** in newly initialized projects (`true`) to keep local codebases safe. Changes to files, deletions, and commands require interactive review unless configured otherwise:
 
 ```bash
-codemcp --approval
-codemcp --approval destructive
-codemcp approval on
+codemcp --no-approval          # Auto-apply changes without prompting
+codemcp --approval destructive # Prompt for deletions and commands only
+codemcp approval off           # Persist disabled approval in codemcp.json
+codemcp approval on            # Persist enabled approval in codemcp.json
 ```
 
 `destructive` prompts for `delete_file` and `execute_command`, but not ordinary writes. For an interactive write, the terminal shows a bounded diff and accepts:
@@ -306,7 +308,7 @@ Available package scripts:
 | --- | --- |
 | `npm start` | Run the bundled `dist/cli.js`. |
 | `npm run dev` | Run `bin/cli.js` with Node's watch mode. |
-| `npm test` | Run the 32 tests under `tests/` with Node's built-in test runner. |
+| `npm test` | Run the 37 tests under `tests/` with Node's built-in test runner. |
 | `npm run build` | Recreate `dist/cli.js`, `dist/server.js`, and copied runtime assets with esbuild. |
 | `npm run compile` | Alias for `npm run build`. |
 | `npm run test:integration` | Run `scripts/test-client.js` against `MCP_URL` or `http://localhost:4173/mcp`. The script sends an optional `API_KEY` header but does not implement the current OAuth flow, so it is a legacy smoke client and is not a complete authenticated test of the default server. |
@@ -322,12 +324,13 @@ The GitHub Actions workflow tests Node 18, 20, and 22 on Ubuntu and Windows. It 
 bin/cli.js                 CLI definition and default-command dispatch
 src/server.js              Express app, startup, tunnel, and shutdown lifecycle
 src/routes/                Health, OAuth, and Streamable HTTP MCP routes
+src/views/                 OAuth consent page HTML templates and UI views
 src/middleware/auth.js     OAuth bearer-token protection for /mcp
 src/services/              Approval, memory, OAuth, and project discovery
 src/tools/                 MCP tool implementations and permission registry
-src/tunnel/ngrok.js        ngrok key, token, domain, and tunnel management
-src/utils/                 Credentials, paths, diffs, logging, notifications, and ports
-tests/                     Node test-runner tests
+src/tunnel/ngrok.js        ngrok key, token, domain, and self-healing tunnel manager
+src/utils/                 Credentials vault, paths, diffs, logging, and notifications
+tests/                     Node native test-runner test suite (37 tests)
 scripts/build.js           esbuild distribution build
 scripts/test-client.js     Streamable HTTP MCP integration client
 assets/                    Banner and notification icon
@@ -342,6 +345,8 @@ info.md                    Extended internal architecture specification
 
 **The server asks for an ngrok API key.** Use `--no-tunnel` for local-only operation, or provide a valid `NGROK_API_KEY` through the environment or `codemcp credentials set NGROK_API_KEY <key>`.
 
+**Ngrok reports endpoint is already online.** CodeMCP includes self-healing tunnel logic that automatically terminates any orphaned local background processes or stale tunnel sessions and retries connecting.
+
 **The displayed port is not 4173.** CodeMCP automatically moves to the first available port in its 50-port probe range. Use the printed local URL.
 
 **An MCP client receives `401`.** Complete the OAuth discovery, registration, authorization, and PKCE token exchange, then send `Authorization: Bearer <access-token>` to `/mcp`. `API_KEY` is not an accepted authentication mechanism.
@@ -354,7 +359,7 @@ info.md                    Extended internal architecture specification
 
 ## Limitations
 
-- OAuth client registrations, authorization codes, JWT validation state, and MCP sessions are in memory. Restarting the server requires clients to reconnect and authenticate.
+- Authorization codes, JWT validation state, and active MCP sessions are in memory. Client registrations and JWT signing secrets persist in the secure vault (`~/.codemcp/credentials.enc`).
 - The MCP server is scoped to one project root per process.
 - Only the explicit command allowlist is executable, and raw shell pipelines are intentionally unsupported.
 - ngrok setup requires network access and an ngrok account when tunneling is enabled.

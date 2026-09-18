@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { exec, execSync } from "node:child_process";
 import ngrok from "@ngrok/ngrok";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
@@ -265,7 +265,42 @@ export async function getOrCreateDomain(options = "codemcp-agent") {
 }
 
 /**
+ * Kills active ngrok sessions and terminates orphaned external processes
+ * holding the ngrok tunnel or domain.
+ */
+export async function killExistingTunnels() {
+  // 1. In-process cleanup via @ngrok/ngrok
+  try {
+    if (typeof ngrok.disconnect === "function") await ngrok.disconnect();
+  } catch {}
+  try {
+    if (typeof ngrok.kill === "function") await ngrok.kill();
+  } catch {}
+
+  // 2. Terminate orphan external processes (codemcp / ngrok) holding the endpoint
+  const currentPid = process.pid;
+  try {
+    if (process.platform === "win32") {
+      execSync(
+        `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process | Where-Object { ($_.CommandLine -match 'codemcp|coduit|devnet-mcp' -or $_.Name -match '^ngrok(\\.exe)?$') -and $_.ProcessId -ne ${currentPid} } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"`,
+        { stdio: "ignore", timeout: 5000 },
+      );
+    } else {
+      execSync(`pkill -f '(codemcp|coduit|devnet-mcp)' -9 || true`, {
+        stdio: "ignore",
+        timeout: 5000,
+      });
+      execSync(`pkill -x 'ngrok' -9 || true`, {
+        stdio: "ignore",
+        timeout: 5000,
+      });
+    }
+  } catch {}
+}
+
+/**
  * Starts an ngrok tunnel using the official @ngrok/ngrok package.
+ * Automatically clears stale tunnels and retries if the endpoint was left online.
  */
 export async function startTunnel(port, description = "codemcp-agent") {
   if (getEnv("NGROK_ENABLED") === "false") {
@@ -280,25 +315,48 @@ export async function startTunnel(port, description = "codemcp-agent") {
 
   const domain = await getOrCreateDomain(description);
 
-  try {
-    const config = { addr: port, authtoken };
-    if (domain) config.domain = domain;
+  // Clear any existing in-process or orphaned tunnel sessions before starting
+  await killExistingTunnels();
 
-    const listener = await ngrok.forward(config);
-    endpointLimitReached = false;
-    return listener;
-  } catch (err) {
-    const message = String(err?.message || err);
-    if (/more than \d+ endpoints|endpoint.*limit|quota/i.test(message)) {
-      endpointLimitReached = true;
-      logger.tunnelWarn(
-        "ngrok endpoint limit reached. Continuing with the local MCP URL. Close unused ngrok endpoints or run with --no-tunnel.",
-      );
+  let attempts = 0;
+  const maxAttempts = 2;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+    try {
+      const config = { addr: port, authtoken };
+      if (domain) config.domain = domain;
+
+      const listener = await ngrok.forward(config);
+      endpointLimitReached = false;
+      return listener;
+    } catch (err) {
+      const message = String(err?.message || err);
+
+      if (/already online/i.test(message) && attempts < maxAttempts) {
+        logger.tunnelWarn(
+          `Endpoint '${domain || "tunnel"}' is already online. Terminating previous tunnels and retrying...`,
+        );
+        await killExistingTunnels();
+        // Wait 1.5s for the ngrok edge to release the domain reservation
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        continue;
+      }
+
+      if (/more than \d+ endpoints|endpoint.*limit|quota/i.test(message)) {
+        endpointLimitReached = true;
+        logger.tunnelWarn(
+          "ngrok endpoint limit reached. Continuing with the local MCP URL. Close unused ngrok endpoints or run with --no-tunnel.",
+        );
+        return null;
+      }
+
+      logger.tunnelError("Failed to start ngrok tunnel", err);
       return null;
     }
-    logger.tunnelError("Failed to start ngrok tunnel", err);
-    return null;
   }
+
+  return null;
 }
 
 /**

@@ -13,7 +13,39 @@ import {
   generateAccessToken,
   verifyAccessToken,
   base64UrlEncode,
+  base64UrlDecode,
 } from "../src/services/oauth.js";
+import { renderAuthorizeHtml, escapeHtml } from "../src/views/oauthConsent.js";
+
+test("OAuth Services - base64Url encoding and decoding roundtrip", () => {
+  const original = "Hello World! @#% &*()_+ <>? äöü 🚀";
+  const encoded = base64UrlEncode(original);
+  assert.ok(!encoded.includes("+"));
+  assert.ok(!encoded.includes("/"));
+  assert.ok(!encoded.includes("="));
+  const decoded = base64UrlDecode(encoded).toString("utf8");
+  assert.equal(decoded, original);
+});
+
+test("OAuth Views - renderAuthorizeHtml generates valid consent page with escaping", () => {
+  const html = renderAuthorizeHtml({
+    projectName: "My <Special> Project & Co",
+    clientName: "Agent \"007\"",
+    clientId: "client-id-123",
+    redirectUri: "https://example.com/cb",
+    codeChallenge: "challenge-xyz",
+    codeChallengeMethod: "S256",
+    state: "state-abc",
+    scope: "mcp",
+    errorMessage: "Test <Error> message",
+  });
+
+  assert.ok(html.includes("<!DOCTYPE html>"));
+  assert.ok(html.includes("My &lt;Special&gt; Project &amp; Co"));
+  assert.ok(html.includes("Agent &quot;007&quot;"));
+  assert.ok(html.includes("Test &lt;Error&gt; message"));
+});
+
 
 test("OAuth Services - Register client via DCR and retrieve", () => {
   const client = registerClient({

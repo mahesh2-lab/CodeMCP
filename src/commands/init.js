@@ -66,7 +66,11 @@ export async function initProject(targetDir = process.cwd(), options = {}) {
       if (pkg.description && typeof pkg.description === "string" && pkg.description.trim()) {
         defaultDesc = pkg.description.trim();
       }
-    } catch {}
+    } catch (err) {
+      if (!isSilent) {
+        console.warn(pc.yellow(`Warning: Could not parse ${pkgPath}: ${err.message}`));
+      }
+    }
   }
 
   let name = defaultName;

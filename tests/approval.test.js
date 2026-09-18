@@ -1,8 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isApprovalRequired, requestApproval } from "../src/services/approval.js";
+import {
+  isApprovalRequired,
+  requestApproval,
+} from "../src/services/approval.js";
 
 test("Approval - project level approval configuration", () => {
+  assert.equal(isApprovalRequired({}, "WRITE"), true);
+  assert.equal(isApprovalRequired({}, "DELETE"), true);
+  assert.equal(isApprovalRequired({}, "EXEC"), true);
+
   const projAlways = { approval: true };
   assert.equal(isApprovalRequired(projAlways, "WRITE"), true);
   assert.equal(isApprovalRequired(projAlways, "DELETE"), true);
@@ -40,7 +47,10 @@ test("Approval - non-interactive environment policy enforcement", async () => {
   const origPolicy = process.env.APPROVAL_NON_INTERACTIVE;
   try {
     process.env.APPROVAL_NON_INTERACTIVE = "reject";
-    const resReject = await requestApproval({ type: "WRITE", path: "test.txt" });
+    const resReject = await requestApproval({
+      type: "WRITE",
+      path: "test.txt",
+    });
     assert.equal(resReject.approved, false);
     assert.match(resReject.reason, /non-interactive environment/);
 

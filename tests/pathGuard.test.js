@@ -83,3 +83,38 @@ test("PathGuard - createScopedPathGuard binds methods to root", () => {
   );
   assert.throws(() => guard.resolveSafe("../escape.txt"));
 });
+
+test("PathGuard - assertExistsAndAllowed blocks ignored and sensitive files", () => {
+  const root = getProjectRoot();
+  const guard = createScopedPathGuard(root);
+  const gitPath = path.join(root, ".git");
+
+  assert.throws(
+    () => guard.assertExistsAndAllowed(gitPath),
+    (err) => err instanceof PathGuardError && err.statusCode === 403,
+  );
+});
+
+test("PathGuard - walk skips ignored directories like .git and node_modules", () => {
+  const root = getProjectRoot();
+  const guard = createScopedPathGuard(root);
+  const results = [];
+  guard.walk(root, "", results);
+
+  assert.ok(results.length > 0, "Should find project files");
+  assert.ok(
+    !results.some((f) => f.startsWith(".git/") || f.startsWith("node_modules/")),
+    "Should not include .git or node_modules files",
+  );
+});
+
+test("PathGuard - isProtectedFromDeletion protects core configuration files", () => {
+  const root = getProjectRoot();
+  const guard = createScopedPathGuard(root);
+  assert.equal(guard.isProtectedFromDeletion("codemcp.json"), true);
+  assert.equal(guard.isProtectedFromDeletion("codemcp.config.json"), true);
+  assert.equal(guard.isProtectedFromDeletion(path.join(root, "codemcp.json")), true);
+  assert.equal(guard.isProtectedFromDeletion("src/index.js"), false);
+});
+
+

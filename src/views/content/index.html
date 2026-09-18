@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authorize CodeMCP - {{projectName}}</title>
+  <link rel="stylesheet" href="./content/style.css">
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <a href="/" class="brand">
+        <img
+          src="https://raw.githubusercontent.com/mahesh2-lab/CodeMCP/refs/heads/main/assets/icon.png"
+          alt="CodeMCP"
+          class="brand-icon"
+        >
+        <span class="brand-name">CodeMCP</span>
+      </a>
+      <span class="header-label">Secure authorization</span>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main>
+    <div class="container">
+      <section class="card">
+
+        <div class="product-icon">
+          <img
+            src="https://raw.githubusercontent.com/mahesh2-lab/CodeMCP/refs/heads/main/assets/icon.png"
+            alt="CodeMCP"
+          >
+        </div>
+
+        <h1>Authorize CodeMCP</h1>
+
+        <p class="description">
+          <strong>{{clientName}}</strong>
+          is requesting permission to connect to your
+          <strong>CodeMCP</strong> project.
+        </p>
+
+        <div class="request-box">
+          <div class="request-row">
+            <span class="request-label">Application</span>
+            <span class="request-value"><span class="client-badge">CodeMCP</span></span>
+          </div>
+          <div class="request-row">
+            <span class="request-label">Client</span>
+            <span class="request-value">{{clientName}}</span>
+          </div>
+          <div class="request-row">
+            <span class="request-label">Project</span>
+            <span class="request-value">{{projectName}}</span>
+          </div>
+          <div class="request-row">
+            <span class="request-label">Permissions</span>
+            <span class="request-value">MCP tools &amp; file operations</span>
+          </div>
+        </div>
+
+        {{errorBox}}
+
+        <form method="POST" action="/authorize" id="authorizeForm">
+          <input type="hidden" name="client_id"             value="{{clientId}}">
+          <input type="hidden" name="redirect_uri"          value="{{redirectUri}}">
+          <input type="hidden" name="code_challenge"        value="{{codeChallenge}}">
+          <input type="hidden" name="code_challenge_method" value="{{codeChallengeMethod}}">
+          <input type="hidden" name="state"                 value="{{state}}">
+          <input type="hidden" name="scope"                 value="{{scope}}">
+
+          <div class="form-group">
+            <label for="password">Owner Password</label>
+            <div class="label-description">
+              Enter the password associated with this CodeMCP project.
+            </div>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              placeholder="Enter your owner password"
+              autocomplete="current-password"
+              required
+              autofocus
+            >
+          </div>
+
+          <button type="submit" id="authorizeButton" class="authorize-button">
+            <span class="button-content">
+              <span>Authorize and Continue</span>
+              <span class="button-arrow">&#8594;</span>
+            </span>
+            <span class="button-loading">
+              <span class="spinner"></span>
+              <span>Authorizing</span>
+              <span class="loading-dots"><i></i><i></i><i></i></span>
+            </span>
+          </button>
+        </form>
+
+        <div class="security-note">
+          <span class="security-icon">&#10003;</span>
+          <span>
+            Your credentials are used only to authorize this connection.
+            Access is limited to the project and permissions described above.
+          </span>
+        </div>
+
+      </section>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-inner">
+      <span class="footer-text">Secure authorization powered by CodeMCP</span>
+      <span class="footer-brand">CodeMCP</span>
+    </div>
+  </footer>
+
+  <script>
+    const form   = document.getElementById("authorizeForm");
+    const button = document.getElementById("authorizeButton");
+    form.addEventListener("submit", event => {
+      if (button.classList.contains("loading")) {
+        event.preventDefault();
+        return;
+      }
+      button.classList.add("loading");
+      button.disabled = true;
+      setTimeout(() => form.submit(), 650);
+    });
+  </script>
+
+</body>
+</html>

@@ -75,7 +75,9 @@ export function findProjectConfig(targetDir) {
         root: projectRoot,
         configFile: null,
       };
-    } catch {}
+    } catch (err) {
+      console.warn(`[projects] Warning: Failed to parse ${pkgPath}: ${err.message}`);
+    }
   }
 
   return {

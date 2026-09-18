@@ -10,7 +10,9 @@ export function infoProject(targetDir = process.cwd()) {
   const files = [];
   try {
     walk(project.root, "", files, project.root);
-  } catch {}
+  } catch (err) {
+    console.warn(pc.yellow(`[info] Warning: Could not list files in ${project.root}: ${err.message}`));
+  }
 
   const permissionText =
     project.permission === "both"

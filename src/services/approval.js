@@ -1,6 +1,10 @@
 import readline from "node:readline";
 import pc from "picocolors";
-import { computeLineDiff, formatDiffBoxLines, formatFullDiff } from "../utils/diff.js";
+import {
+  computeLineDiff,
+  formatDiffBoxLines,
+  formatFullDiff,
+} from "../utils/diff.js";
 import { printApprovalBox } from "../utils/box.js";
 import { getEnv } from "../utils/env.js";
 import { notify } from "../utils/notify.js";
@@ -34,7 +38,7 @@ export function isApprovalRequired(project, actionType) {
     return true;
   }
 
-  return false;
+  return projectApproval === undefined || projectApproval === null;
 }
 
 let pendingApproval = Promise.resolve();
@@ -69,11 +73,18 @@ async function promptApproval({
 
   // If not a TTY terminal, check non-interactive policy
   if (!process.stdin.isTTY) {
-    const nonInteractivePolicy = (getEnv("APPROVAL_NON_INTERACTIVE", "reject") || "").toLowerCase();
-    if (nonInteractivePolicy === "reject" || nonInteractivePolicy === "deny" || nonInteractivePolicy === "false") {
+    const nonInteractivePolicy = (
+      getEnv("APPROVAL_NON_INTERACTIVE", "reject") || ""
+    ).toLowerCase();
+    if (
+      nonInteractivePolicy === "reject" ||
+      nonInteractivePolicy === "deny" ||
+      nonInteractivePolicy === "false"
+    ) {
       return {
         approved: false,
-        reason: "Action rejected: running in non-interactive environment with strict approval policy enabled.",
+        reason:
+          "Action rejected: running in non-interactive environment with strict approval policy enabled.",
       };
     }
     console.warn(
@@ -85,10 +96,13 @@ async function promptApproval({
   }
 
   const isNewFile = oldContent === "" && newContent !== "";
-  const diff = type === "WRITE" ? computeLineDiff(oldContent, newContent) : null;
-  const expectedBytes = newSize || (newContent ? Buffer.byteLength(newContent, "utf8") : 0);
+  const diff =
+    type === "WRITE" ? computeLineDiff(oldContent, newContent) : null;
+  const expectedBytes =
+    newSize || (newContent ? Buffer.byteLength(newContent, "utf8") : 0);
 
-  const title = pc.yellow("⚠") + " " + pc.bold(pc.white("AI CHANGE APPROVAL REQUIRED"));
+  const title =
+    pc.yellow("⚠") + " " + pc.bold(pc.white("AI CHANGE APPROVAL REQUIRED"));
   const rows = [
     pc.bold(pc.white(type === "EXEC" ? "EXECUTE COMMAND" : `${type} FILE`)),
     pc.bold(pc.white(displayTarget)),
@@ -119,7 +133,11 @@ async function promptApproval({
       );
     }
     rows.push("");
-    const diffBox = formatDiffBoxLines(diff, { maxLines: 15, maxLineWidth: 64, contextRadius: 2 });
+    const diffBox = formatDiffBoxLines(diff, {
+      maxLines: 15,
+      maxLineWidth: 64,
+      contextRadius: 2,
+    });
     rows.push(...diffBox.rows);
   } else if (type === "DELETE") {
     rows.push(
@@ -130,14 +148,20 @@ async function promptApproval({
         pc.red(`-${formatBytes(size)}`),
     );
     rows.push("");
-    rows.push(pc.yellow(" ⚠ This file will be permanently deleted from the workspace."));
+    rows.push(
+      pc.yellow(" ⚠ This file will be permanently deleted from the workspace."),
+    );
     rows.push(pc.dim(`   Size: ${formatBytes(size)}`));
   } else if (type === "EXEC") {
     if (cwd) {
       rows.push(pc.dim(`Directory: ${cwd}`));
     }
     rows.push("");
-    rows.push(pc.yellow(" ⚠ This process will execute directly in your project workspace."));
+    rows.push(
+      pc.yellow(
+        " ⚠ This process will execute directly in your project workspace.",
+      ),
+    );
   }
 
   printApprovalBox(title, rows, 69);
@@ -277,8 +301,13 @@ async function promptApproval({
         cleanup();
         process.stdout.write(pc.green("y\n\n"));
         console.log(pc.green("✓ Change accepted"));
-        const writtenLabel = type === "WRITE" ? `${formatBytes(expectedBytes)} written` : "deleted";
-        console.log(`  ${pc.white(relPath)} ${pc.dim("·")} ${pc.yellow(writtenLabel)}\n`);
+        const writtenLabel =
+          type === "WRITE"
+            ? `${formatBytes(expectedBytes)} written`
+            : "deleted";
+        console.log(
+          `  ${pc.white(relPath)} ${pc.dim("·")} ${pc.yellow(writtenLabel)}\n`,
+        );
         resolve({ approved: true });
         return;
       }
@@ -287,7 +316,9 @@ async function promptApproval({
         cleanup();
         process.stdout.write(pc.red("n\n\n"));
         console.log(pc.red("✖ Change rejected"));
-        console.log(`  ${pc.white(relPath)} ${pc.dim("·")} ${pc.dim("changes discarded")}\n`);
+        console.log(
+          `  ${pc.white(relPath)} ${pc.dim("·")} ${pc.dim("changes discarded")}\n`,
+        );
         resolve({
           approved: false,
           reason:
@@ -300,7 +331,9 @@ async function promptApproval({
         cleanup();
         process.stdout.write(pc.cyan("q\n\n"));
         console.log(pc.red("✖ Change rejected"));
-        console.log(`  ${pc.white(relPath)} ${pc.dim("·")} ${pc.dim("cancelled")}\n`);
+        console.log(
+          `  ${pc.white(relPath)} ${pc.dim("·")} ${pc.dim("cancelled")}\n`,
+        );
         resolve({
           approved: false,
           reason: "User cancelled review prompt",
@@ -395,7 +428,6 @@ export async function verifyActionApproval({
 
   return { approved: true };
 }
-
 
 export default {
   isApprovalRequired,
