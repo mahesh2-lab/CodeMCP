@@ -47,14 +47,29 @@ const CLIENT_ICON_MAP = [
   { match: /chatgpt|openai/i, icon: "https://thesvg.org/icons/openai-chatgpt/default.svg" },
   { match: /google|gemini/i, icon: "https://thesvg.org/icons/gemini/default.svg" },
   { match: /deepseek/i, icon: "https://thesvg.org/icons/deepseek/default.svg" },
-  { match: /Grok/i, icon: "https://thesvg.org/icons/grok/light.svg" },
+  { match: /grok/i, icon: "https://thesvg.org/icons/grok/light.svg" },
 
+  { match: /lovable/i, icon: "https://thesvg.org/icons/lovable/default.svg" },
+  { match: /replit/i, icon: "https://thesvg.org/icons/replit/default.svg" },
+  { match: /v0|vercel/i, icon: "https://thesvg.org/icons/v0-vercel/default.svg" },
+  { match: /bolt|stackblitz/i, icon: "https://thesvg.org/icons/bolt/default.svg" },
 
-  { match: /cursor/i, icon: "https://thesvg.org/icons/cursor/default.svg" },
-  { match: /windsurf|codeium/i, icon: "https://thesvg.org/icons/windsurf/default.svg" },
-  { match: /github|copilot/i, icon: "https://thesvg.org/icons/github/default.svg" },
-  { match: /vscode|visual\s*studio/i, icon: "https://thesvg.org/icons/visual-studio-code/default.svg" },
-  { match: /codemcp/i, icon: "https://thesvg.org/icons/codemcp/default.svg" },
+  { match: /manus/i, icon: "https://thesvg.org/icons/manus/light.svg" },
+  { match: /base44/i, icon: "https://thesvg.org/icons/base44/default.svg" },
+  { match: /firebase studio/i, icon: "https://thesvg.org/icons/firebase/default.svg" },
+  { match: /google ai studio/i, icon: "https://thesvg.org/icons/google-ai-studio/default.svg" },
+
+  { match: /figma make|figma/i, icon: "https://thesvg.org/icons/figma/default.svg" },
+  { match: /webflow/i, icon: "https://thesvg.org/icons/webflow/default.svg" },
+  { match: /framer/i, icon: "https://thesvg.org/icons/framer/default.svg" },
+  { match: /builder\.io|builderio/i, icon: "https://thesvg.org/icons/builder-io/default.svg" },
+
+  { match: /emergent/i, icon: "https://thesvg.org/icons/emergent/default.svg" },
+  { match: /mistral-mcp-client/i, icon: "https://thesvg.org/icons/mistral/default.svg" },
+  { match: /softgen/i, icon: "https://thesvg.org/icons/softgen/default.svg" },
+  { match: /pythagora/i, icon: "https://thesvg.org/icons/pythagora/default.svg" },
+
+  { match: /copilot|github/i, icon: "https://thesvg.org/icons/github-copilot/default.svg" },
 ];
 
 
