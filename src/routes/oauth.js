@@ -1,4 +1,4 @@
-import { renderAuthorizeHtml } from "../views/oauthConsent.js";
+import { renderAuthorizeHtml, getStyleCss } from "../views/oauthConsent.js";
 import { Router } from "express";
 import {
   getBaseUrl,
@@ -13,6 +13,15 @@ import { getActiveProject } from "../services/projects.js";
 import { logger } from "../utils/logger.js";
 
 const router = Router();
+
+/**
+ * Serves OAuth consent stylesheet
+ */
+router.get(["/content/style.css", "/style.css"], (req, res) => {
+  res.setHeader("Content-Type", "text/css; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.send(getStyleCss());
+});
 
 /**
  * RFC 8414 - OAuth 2.0 Authorization Server Metadata

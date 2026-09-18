@@ -40,7 +40,7 @@ test("OAuth Views - renderAuthorizeHtml generates valid consent page with escapi
     errorMessage: "Test <Error> message",
   });
 
-  assert.ok(html.includes("<!DOCTYPE html>"));
+  assert.ok(/<!doctype html>/i.test(html));
   assert.ok(html.includes("My &lt;Special&gt; Project &amp; Co"));
   assert.ok(html.includes("Agent &quot;007&quot;"));
   assert.ok(html.includes("Test &lt;Error&gt; message"));

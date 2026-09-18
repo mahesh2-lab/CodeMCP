@@ -68,6 +68,16 @@ async function build() {
     );
   }
 
+  // Copy views content (index.html, style.css)
+  const viewsContentSrc = path.join(rootDir, "src", "views", "content");
+  const distContentDir = path.join(distDir, "content");
+  const packageContentDir = path.join(packageDir, "content");
+  if (fs.existsSync(viewsContentSrc)) {
+    fs.cpSync(viewsContentSrc, distContentDir, { recursive: true });
+    fs.cpSync(viewsContentSrc, packageContentDir, { recursive: true });
+    console.log("📄 Copied views/content to dist/content & package/content");
+  }
+
   console.log(
     `📦 Building unified CodeMCP v${pkgVersion} bundle with esbuild...`,
   );
