@@ -27,15 +27,16 @@ async function build() {
   fs.mkdirSync(distDir, { recursive: true });
 
   console.log("📦 Preparing package staging folder...");
-  if (fs.existsSync(packageDir)) {
-    fs.rmSync(packageDir, { recursive: true, force: true });
+  if (!fs.existsSync(packageDir)) {
+    fs.mkdirSync(packageDir, { recursive: true });
   }
-  fs.mkdirSync(packageDir, { recursive: true });
 
-  const packageReadmeSource = path.join(rootDir, "README.md");
-
-  if (fs.existsSync(packageReadmeSource)) {
-    fs.copyFileSync(packageReadmeSource, path.join(packageDir, "README.md"));
+  const packageReadmePath = path.join(packageDir, "README.md");
+  if (!fs.existsSync(packageReadmePath)) {
+    const packageReadmeSource = path.join(rootDir, "README.md");
+    if (fs.existsSync(packageReadmeSource)) {
+      fs.copyFileSync(packageReadmeSource, packageReadmePath);
+    }
   }
 
   const licenseSrc = path.join(rootDir, "LICENSE");

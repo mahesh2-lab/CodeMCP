@@ -8,10 +8,17 @@
 export function getClientSource(req) {
   // 1. IP & network location
   const forwarded = req.headers["x-forwarded-for"];
-  const rawIp = (forwarded ? forwarded.split(",")[0] : req.socket?.remoteAddress || "").trim();
-  const clientIp = !rawIp || rawIp === "::1" || rawIp.includes("127.0.0.1") ? "127.0.0.1" : rawIp;
+  const rawIp = (
+    forwarded ? forwarded.split(",")[0] : req.socket?.remoteAddress || ""
+  ).trim();
+  const clientIp =
+    !rawIp || rawIp === "::1" || rawIp.includes("127.0.0.1")
+      ? "127.0.0.1"
+      : rawIp;
   const location = clientIp === "127.0.0.1" ? "localhost" : clientIp;
-  const channel = req.headers["host"]?.includes("ngrok") ? "ngrok tunnel" : "local network";
+  const channel = req.headers["host"]?.includes("ngrok")
+    ? "ngrok tunnel"
+    : "local network";
 
   // 2. Client identification (MCP handshake payload, User-Agent, or Origin)
   const mcpName = req.body?.params?.clientInfo?.name || "";
@@ -36,13 +43,19 @@ export function getClientSource(req) {
 
   // 3. Client transport / type classification
   const acceptHeader = req.headers["accept"] || "";
-  const isSse = acceptHeader.includes("text/event-stream") || req.query?.transport === "sse";
+  const isSse =
+    acceptHeader.includes("text/event-stream") ||
+    req.query?.transport === "sse";
   const uaLower = userAgent.toLowerCase();
 
   let clientType = "streamable-http";
   if (isSse) {
     clientType = "sse";
-  } else if (uaLower.includes("curl") || uaLower.includes("wget") || uaLower.includes("httpie")) {
+  } else if (
+    uaLower.includes("curl") ||
+    uaLower.includes("wget") ||
+    uaLower.includes("httpie")
+  ) {
     clientType = "cli/curl";
   } else if (uaLower.includes("mozilla") && !mcpName) {
     clientType = "browser";
