@@ -67,16 +67,23 @@ export const logger = {
   // Session lifecycle
   sessionStart(id, client) {
     const clientName = client?.clientName || "AI Assistant";
-    const channel = client?.channel || "local network";
+    if (!this._connectedClients) {
+      this._connectedClients = new Set();
+    }
+    // Only log the initial connection once per client session
+    if (this._connectedClients.has(clientName)) {
+      return;
+    }
+    this._connectedClients.add(clientName);
     console.log(
-      `${getTimestamp()}        ${pc.green("✓ CONNECT")}  ${pc.white(clientName)} ${pc.dim(`(${channel})`)}`,
+      `${this.prefix(null)} ${pc.green("✓ CONNECT")}  ${pc.white(clientName)}`,
     );
   },
 
   sessionEnd(id, client) {
     const clientName = client?.clientName || "AI Assistant";
     console.log(
-      `${getTimestamp()}        ${pc.dim("- DISCONN")}  ${pc.dim(`${clientName} closed`)}`,
+      `${this.prefix(null)} ${pc.dim("- DISCONN")}  ${pc.dim(`${clientName} closed`)}`,
     );
   },
 
@@ -110,7 +117,7 @@ export const logger = {
 
   toolWritePending(relPath) {
     console.log(
-      `${this.prefix()} ${pc.yellow("⚠ WRITE")}    ${pc.white(relPath)}`,
+      `${this.prefix()} ${pc.yellow("▲ WRITE")}    ${pc.white(relPath)}`,
     );
   },
 
@@ -126,7 +133,7 @@ export const logger = {
 
   toolDeletePending(relPath) {
     console.log(
-      `${this.prefix()} ${pc.yellow("⚠ DELETE")}   ${pc.white(relPath)}`,
+      `${this.prefix()} ${pc.yellow("▲ DELETE")}   ${pc.white(relPath)}`,
     );
   },
 
@@ -150,6 +157,13 @@ export const logger = {
 
   // Security & User Decisions
   blocked(actionName, target, reason) {
+    // Silently skip terminal logs and notifications for protected config files
+    if (
+      target === "codemcp.json" ||
+      /(^|\/)codemcp(?:\.[^/]+)?$/i.test(target)
+    ) {
+      return;
+    }
     console.warn(
       `${this.prefix()} ${pc.red("✖ BLOCKED")}  ${pc.white(target)} ${pc.dim("·")} ${pc.yellow(reason)}`,
     );
@@ -167,7 +181,7 @@ export const logger = {
 
   warn(actionName, target, message) {
     console.warn(
-      `${this.prefix()} ${pc.yellow("⚠ WARN")}     ${pc.white(target)} ${pc.dim("·")} ${message}`,
+      `${this.prefix()} ${pc.yellow("▲ WARN")}     ${pc.white(target)} ${pc.dim("·")} ${message}`,
     );
   },
 
@@ -180,32 +194,32 @@ export const logger = {
 
   // Tunnel events
   tunnelInfo(msg) {
-    console.log(`${getTimestamp()}        ${pc.magenta("→ TUNNEL")}   ${msg}`);
+    console.log(`${this.prefix(null)} ${pc.magenta("→ TUNNEL")}   ${msg}`);
   },
 
   tunnelWarn(msg) {
-    console.warn(`${getTimestamp()}        ${pc.yellow("⚠ TUNNEL")}   ${pc.yellow(msg)}`);
+    console.warn(`${this.prefix(null)} ${pc.yellow("▲ TUNNEL")}   ${pc.yellow(msg)}`);
   },
 
   tunnelError(msg, err) {
     console.error(
-      `${getTimestamp()}        ${pc.red("✖ TUNNEL")}   ${pc.red(msg)}`,
+      `${this.prefix(null)} ${pc.red("✖ TUNNEL")}   ${pc.red(msg)}`,
       err ? pc.dim(err.message || err) : "",
     );
   },
 
   // Server events
   serverInfo(msg) {
-    console.log(`${getTimestamp()}        ${pc.dim("→ SERVER")}   ${msg}`);
+    console.log(`${this.prefix(null)} ${pc.dim("→ SERVER")}   ${msg}`);
   },
 
   serverWarn(msg) {
-    console.warn(`${getTimestamp()}        ${pc.yellow("⚠ SERVER")}   ${pc.yellow(msg)}`);
+    console.warn(`${this.prefix(null)} ${pc.yellow("▲ SERVER")}   ${pc.yellow(msg)}`);
   },
 
   serverError(msg, err) {
     console.error(
-      `${getTimestamp()}        ${pc.red("✖ SERVER")}   ${pc.red(msg)}`,
+      `${this.prefix(null)} ${pc.red("✖ SERVER")}   ${pc.red(msg)}`,
       err ? pc.dim(err.message || err) : "",
     );
   },

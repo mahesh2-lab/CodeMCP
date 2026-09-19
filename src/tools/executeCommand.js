@@ -212,8 +212,15 @@ export function validateExecution(binary, args, projectRoot, project = null) {
     throw new PathGuardError("Invalid executable binary", 400);
   }
 
-  // Prohibit directory separators in binary name
-  if (binary.includes("/") || binary.includes("\\") || binary.includes(":")) {
+  // Prohibit directory, relative paths, or separators in binary name
+  if (
+    binary === "." ||
+    binary === ".." ||
+    binary.startsWith(".") ||
+    binary.includes("/") ||
+    binary.includes("\\") ||
+    binary.includes(":")
+  ) {
     throw new PathGuardError(
       "Direct binary path execution is prohibited. Specify only the executable name from the allowlist.",
       403,
@@ -426,56 +433,78 @@ export function resolveBinaryForPlatform(binary) {
  */
 export function runExecFileWithTimeout({ binary, args, cwd, timeout, env }) {
   const startTime = Date.now();
-  const executable = resolveBinaryForPlatform(binary);
+  let executable = resolveBinaryForPlatform(binary);
+  let finalArgs = args;
+
+  // On Windows, Node.js 22+ throws spawn EINVAL when executing .cmd / .bat files directly with shell: false.
+  // We invoke via cmd.exe /d /s /c to execute allowlisted batch/cmd binaries cleanly and safely.
+  if (process.platform === "win32") {
+    if (/\.(cmd|bat)$/i.test(executable)) {
+      finalArgs = ["/d", "/s", "/c", executable, ...args];
+      executable = process.env.ComSpec || "cmd.exe";
+    }
+  }
 
   return new Promise((resolve) => {
-    const child = execFile(
-      executable,
-      args,
-      {
-        cwd,
-        timeout,
-        maxBuffer: 500 * 1024,
-        windowsHide: true,
-        shell: false,
-        env,
-      },
-      (err, stdout, stderr) => {
-        const duration = Date.now() - startTime;
-        const isTimedOut = Boolean(
-          err &&
-          (err.killed || err.signal === "SIGTERM" || err.code === "ETIMEDOUT"),
-        );
+    let child;
+    try {
+      child = execFile(
+        executable,
+        finalArgs,
+        {
+          cwd,
+          timeout,
+          maxBuffer: 500 * 1024,
+          windowsHide: true,
+          shell: false,
+          env,
+        },
+        (err, stdout, stderr) => {
+          const duration = Date.now() - startTime;
+          const isTimedOut = Boolean(
+            err &&
+            (err.killed || err.signal === "SIGTERM" || err.code === "ETIMEDOUT"),
+          );
 
-        if (isTimedOut && process.platform === "win32" && child.pid) {
-          try {
-            exec(`taskkill /pid ${child.pid} /t /f`, { windowsHide: true });
-          } catch {}
-        }
+          if (isTimedOut && process.platform === "win32" && child?.pid) {
+            try {
+              exec(`taskkill /pid ${child.pid} /t /f`, { windowsHide: true });
+            } catch {}
+          }
 
-        let normalizedStderr = stderr || "";
-        if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-          normalizedStderr +=
-            "\n[Error: Command output exceeded maximum buffer limit (500 KB)]";
-        }
+          let normalizedStderr = stderr || "";
+          if (err?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+            normalizedStderr +=
+              "\n[Error: Command output exceeded maximum buffer limit (500 KB)]";
+          }
 
-        const exitCode = isTimedOut
-          ? 1
-          : typeof err?.code === "number"
-            ? err.code
-            : err
-              ? 1
-              : 0;
+          const exitCode = isTimedOut
+            ? 1
+            : typeof err?.code === "number"
+              ? err.code
+              : err
+                ? 1
+                : 0;
 
-        resolve({
-          stdout: stdout || "",
-          stderr: normalizedStderr,
-          exitCode,
-          duration,
-          isTimedOut,
-        });
-      },
-    );
+          resolve({
+            stdout: stdout || "",
+            stderr: normalizedStderr,
+            exitCode,
+            duration,
+            isTimedOut,
+          });
+        },
+      );
+    } catch (syncErr) {
+      const duration = Date.now() - startTime;
+      resolve({
+        stdout: "",
+        stderr: syncErr?.message || String(syncErr),
+        exitCode: 1,
+        duration,
+        isTimedOut: false,
+      });
+    }
   });
 }
 

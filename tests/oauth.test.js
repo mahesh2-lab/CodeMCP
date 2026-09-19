@@ -14,6 +14,7 @@ import {
   verifyAccessToken,
   base64UrlEncode,
   base64UrlDecode,
+  TOKEN_EXPIRY_SECONDS,
 } from "../src/services/oauth.js";
 import { renderAuthorizeHtml, escapeHtml } from "../src/views/oauthConsent.js";
 
@@ -326,7 +327,7 @@ test("OAuth End-to-End - Full flow: DCR -> Authorize -> Token -> Protected /mcp"
     const tokenData = await tokenRes.json();
     assert.ok(tokenData.access_token);
     assert.equal(tokenData.token_type, "Bearer");
-    assert.equal(tokenData.expires_in, 3600);
+    assert.equal(tokenData.expires_in, TOKEN_EXPIRY_SECONDS);
 
     // 7. Access protected /mcp endpoint with access token
     const mcpRes = await fetch(`${baseUrl}/mcp`, {

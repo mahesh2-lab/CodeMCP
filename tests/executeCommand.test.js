@@ -48,7 +48,19 @@ test("ExecuteCommand - Validator blocks non-allowlisted binaries", () => {
   assert.doesNotThrow(() => validateExecution("git", ["status"], root));
   assert.doesNotThrow(() => validateExecution("npm", ["test"], root));
 
-  // Non-allowlisted binaries
+  // Non-allowlisted binaries & path execution
+  assert.throws(
+    () => validateExecution(".", [], root),
+    (err) => err instanceof PathGuardError && err.statusCode === 403
+  );
+  assert.throws(
+    () => validateExecution("..", [], root),
+    (err) => err instanceof PathGuardError && err.statusCode === 403
+  );
+  assert.throws(
+    () => validateExecution("./node", [], root),
+    (err) => err instanceof PathGuardError && err.statusCode === 403
+  );
   assert.throws(
     () => validateExecution("whoami", [], root),
     (err) => err instanceof PathGuardError && err.statusCode === 403
@@ -146,4 +158,20 @@ test("ExecuteCommand - execFile executes safe binary without shell", async () =>
 
   assert.equal(result.exitCode, 0);
   assert.ok(result.stdout.startsWith("v"));
+});
+
+test("ExecuteCommand - runs npm --version safely without spawn EINVAL", async () => {
+  const root = getProjectRoot();
+  const cleanEnv = buildCleanEnv(root);
+
+  const result = await runExecFileWithTimeout({
+    binary: "npm",
+    args: ["--version"],
+    cwd: root,
+    timeout: 15000,
+    env: cleanEnv,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout.trim(), /^\d+\.\d+\.\d+/);
 });

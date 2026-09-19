@@ -46,10 +46,13 @@ export function printBox(title, rows, options = {}) {
  * @param {string[]} rows - The lines of text/diff to render inside the box
  * @param {number} [width=69] - The total inner dash width
  */
-export function printApprovalBox(title, rows, width = 69) {
+export function printApprovalBox(title, rows, defaultWidth = 69) {
   const color = pc.cyan;
   const titleLen = stripAnsi(title).length;
-  const dashes = Math.max(width - titleLen - 4, 2);
+  const maxRowLen =
+    rows.length > 0 ? Math.max(...rows.map((r) => stripAnsi(r).length)) : 0;
+  const width = Math.max(defaultWidth, titleLen + 6, maxRowLen + 2);
+  const dashes = Math.max(width - titleLen - 3, 2);
 
   console.log("\n " + color("┌─ ") + title + " " + color("─".repeat(dashes) + "┐"));
 

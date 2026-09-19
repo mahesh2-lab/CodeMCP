@@ -17,12 +17,11 @@ import { logger } from "../utils/logger.js";
  */
 
 /**
- * Creates a scoped execution context for all tools, eliminating parameter drilling
- * of projectRoot and customRoot down into each file and helper.
+ * Creates execution context and path guards for tools.
  *
  * @param {import("@modelcontextprotocol/sdk/server/mcp.js").McpServer} server - Active MCP server instance
- * @param {object} [project] - Optional project configuration object
- * @returns {ToolContext} The initialized tool context
+ * @param {object} [project] - Project configuration
+ * @returns {ToolContext} Initialized tool context
  */
 export function createToolContext(server, project) {
   const projectRoot = project?.root || getProjectRoot();
@@ -37,12 +36,11 @@ export function createToolContext(server, project) {
 }
 
 /**
- * Wraps a tool handler with standardized parameter checking, error logging,
- * security policy detection, and unified MCP error formatting.
+ * Wraps a tool handler with logging, security checks, and standard error handling.
  *
- * @param {string} action - Action label for logger (e.g. "READ", "WRITE", "DELETE", "LIST", "EXEC")
- * @param {(args: any) => Promise<McpToolResponse | object>} handlerFn - Async tool execution callback
- * @returns {(args: any) => Promise<McpToolResponse>} Wrapped safe tool execution handler
+ * @param {string} action - Action label (e.g. READ, WRITE, EXEC)
+ * @param {(args: any) => Promise<McpToolResponse | object>} handlerFn - Tool handler function
+ * @returns {(args: any) => Promise<McpToolResponse>} Safe handler function
  */
 export function wrapToolHandler(action, handlerFn) {
   return async (args) => {
@@ -63,13 +61,18 @@ export function wrapToolHandler(action, handlerFn) {
           statusCode === 403 ||
           /blocked|escapes|prohibited|unauthorized|forbidden/i.test(message);
 
-        if (isBlocked) {
-          logger.blocked(action, target, message);
-        } else {
-          logger.warn(action, target, message);
+        const isConfigFile =
+          target === "codemcp.json" ||
+          /(^|\/)codemcp(?:\.[^/]+)?$/i.test(target);
+
+        if (!isConfigFile) {
+          if (isBlocked) {
+            logger.blocked(action, target, message);
+          } else {
+            logger.warn(action, target, message);
+          }
         }
 
-        // Build consistent text message adhering to both security policies and test assertions
         let responseText;
         if (isBlocked) {
           responseText = message.toLowerCase().startsWith("blocked")
@@ -96,16 +99,15 @@ export function wrapToolHandler(action, handlerFn) {
   };
 }
 
-/** Maximum character length for a tool text response to prevent context bloat (250 KB) */
+/** Max tool text response length (250 KB) */
 export const MAX_TOOL_RESPONSE_CHARS = 250_000;
 
 /**
- * Formats standard MCP dual structured/text responses for client consumption.
- * Caps maximum text length to prevent context-window exhaustion from massive payloads.
+ * Formats structured content and text into a standard MCP tool response.
  *
  * @param {object} structuredContent - Machine-readable payload
- * @param {string} [textMessage] - Optional custom markdown/text view. Defaults to JSON stringified payload.
- * @returns {McpToolResponse} Standardized MCP response object
+ * @param {string} [textMessage] - Optional custom text or markdown message
+ * @returns {McpToolResponse} Standardized response object
  */
 export function formatToolResponse(structuredContent, textMessage) {
   let text = textMessage;

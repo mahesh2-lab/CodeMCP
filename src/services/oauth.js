@@ -27,7 +27,9 @@ function loadPersistedClients() {
       }
     }
   } catch (err) {
-    logger.serverWarn?.(`Failed to parse persisted OAuth clients: ${err.message}`);
+    logger.serverWarn?.(
+      `Failed to parse persisted OAuth clients: ${err.message}`,
+    );
   }
 }
 
@@ -40,8 +42,8 @@ loadPersistedClients();
 /** Auth code expiration: 5 minutes */
 export const AUTH_CODE_TTL_MS = 5 * 60 * 1000;
 
-/** JWT token expiration: 1 hour */
-export const TOKEN_EXPIRY_SECONDS = 3600;
+/** JWT token expiration: 7 days (604,800 seconds) */
+export const TOKEN_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * Sweeps expired authorization codes to prevent in-memory accumulation.
@@ -112,7 +114,9 @@ export function getBaseUrl(req) {
  * @returns {string}
  */
 export function base64UrlEncode(input) {
-  const buffer = Buffer.isBuffer(input) ? input : Buffer.from(String(input ?? ""), "utf8");
+  const buffer = Buffer.isBuffer(input)
+    ? input
+    : Buffer.from(String(input ?? ""), "utf8");
   return buffer.toString("base64url");
 }
 

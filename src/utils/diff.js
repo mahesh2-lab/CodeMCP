@@ -126,19 +126,19 @@ export function formatDiffBoxLines(diff, options = {}) {
   const firstInteresting = isInteresting.indexOf(true);
 
   if (firstInteresting > 0) {
-    rows.push(pc.dim(" ..."));
+    rows.push(pc.dim("..."));
   }
 
   for (let idx = Math.max(0, firstInteresting); idx < lines.length; idx++) {
     if (shownCount >= maxLines) {
       const remaining = lines.length - idx;
-      rows.push(pc.dim(` ... ${remaining} more lines`));
+      rows.push(pc.dim(`... ${remaining} more lines`));
       break;
     }
 
     if (!isInteresting[idx]) {
       if (!inSkippedBlock) {
-        rows.push(pc.dim(" ..."));
+        rows.push(pc.dim("..."));
         inSkippedBlock = true;
       }
       continue;
@@ -152,11 +152,11 @@ export function formatDiffBoxLines(diff, options = {}) {
     const text = truncateLine(item.text, maxTextLen);
 
     if (item.type === "add") {
-      rows.push(pc.green(` + ${text}`));
+      rows.push(pc.green(`+ ${text}`));
     } else if (item.type === "del") {
-      rows.push(pc.red(` - ${text}`));
+      rows.push(pc.red(`- ${text}`));
     } else {
-      rows.push(pc.dim(`   ${text}`));
+      rows.push(pc.dim(`  ${text}`));
     }
   }
 

@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import {
   isApprovalRequired,
   requestApproval,
+  allowSessionApproval,
+  isSessionApprovalAllowed,
+  clearSessionApprovals,
 } from "../src/services/approval.js";
 
 test("Approval - project level approval configuration", () => {
@@ -64,4 +67,30 @@ test("Approval - non-interactive environment policy enforcement", async () => {
       delete process.env.APPROVAL_NON_INTERACTIVE;
     }
   }
+});
+
+test("Approval - session-wide approval overrides (allow once vs always allow)", () => {
+  clearSessionApprovals();
+  assert.equal(isSessionApprovalAllowed("WRITE"), false);
+  assert.equal(isApprovalRequired({ approval: true }, "WRITE"), true);
+
+  // Grant session approval for WRITE only
+  allowSessionApproval("WRITE");
+  assert.equal(isSessionApprovalAllowed("WRITE"), true);
+  assert.equal(isSessionApprovalAllowed("EXEC"), false);
+  assert.equal(isApprovalRequired({ approval: true }, "WRITE"), false);
+  assert.equal(isApprovalRequired({ approval: true }, "EXEC"), true);
+
+  // Clear approvals
+  clearSessionApprovals();
+  assert.equal(isSessionApprovalAllowed("WRITE"), false);
+  assert.equal(isApprovalRequired({ approval: true }, "WRITE"), true);
+
+  // Grant all
+  allowSessionApproval("ALL");
+  assert.equal(isSessionApprovalAllowed("WRITE"), true);
+  assert.equal(isSessionApprovalAllowed("DELETE"), true);
+  assert.equal(isSessionApprovalAllowed("EXEC"), true);
+  assert.equal(isApprovalRequired({ approval: true }, "DELETE"), false);
+  clearSessionApprovals();
 });

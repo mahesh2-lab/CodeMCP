@@ -104,7 +104,6 @@ async function getOrCreateSession(sessionId, req, isInit = false) {
   let sessionData;
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => effectiveId,
-    // Keep tunnel and proxy connections active while the client is idle.
     keepAliveMs: 15_000,
     onsessioninitialized: (newId) => {
       sessions.set(newId, sessionData);
@@ -112,8 +111,6 @@ async function getOrCreateSession(sessionId, req, isInit = false) {
     },
   });
 
-  // If this session is adopting a client's existing session ID after a server restart,
-  // mark it as initialized so that subsequent tool calls/SSE reconnects execute seamlessly
   if (!isInit && transport._webStandardTransport) {
     transport._webStandardTransport._initialized = true;
     transport._webStandardTransport.sessionId = effectiveId;
@@ -162,7 +159,6 @@ const handleExistingSession = async (req, res) => {
   const sessionId = req.headers["mcp-session-id"];
   const isSse = req.headers.accept?.includes("text/event-stream");
 
-  // If a human is viewing the endpoint in a browser (no session ID and not SSE)
   if (req.method === "GET" && !sessionId && !isSse) {
     const project = req?.project || getActiveProject();
     const client = await getClientSource(req);

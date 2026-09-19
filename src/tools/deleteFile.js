@@ -56,10 +56,19 @@ export function registerDeleteFileTool(serverOrCtx, project) {
       const cleanRelPath = relPath.trim();
       const absolutePath = guard.resolveSafe(cleanRelPath);
 
-      if (
-        guard.isProtectedFromDeletion(absolutePath) ||
-        guard.isIgnored(absolutePath)
-      ) {
+      if (guard.isProtectedFromDeletion(absolutePath)) {
+        // Silently skip protected configuration files without throwing error or logging BLOCKED
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Skipped protected file "${cleanRelPath}".`,
+            },
+          ],
+        };
+      }
+
+      if (guard.isIgnored(absolutePath)) {
         throw new PathGuardError(
           "Deleting this file is blocked (protected or sensitive)",
           403,

@@ -10,6 +10,36 @@ import { getEnv } from "../utils/env.js";
 import { notify } from "../utils/notify.js";
 import { logger, formatBytes } from "../utils/logger.js";
 
+// In-memory set of actions granted session-wide approval by the user
+const sessionApprovedTypes = new Set();
+
+/**
+ * Grants session-wide approval for an action type (or all actions) until server restart.
+ * @param {'WRITE'|'DELETE'|'EXEC'|'ALL'} [actionType='ALL']
+ */
+export function allowSessionApproval(actionType = "ALL") {
+  sessionApprovedTypes.add(actionType);
+}
+
+/**
+ * Checks whether an action type has been session-approved by the user.
+ * @param {'WRITE'|'DELETE'|'EXEC'} actionType
+ * @returns {boolean}
+ */
+export function isSessionApprovalAllowed(actionType) {
+  return (
+    sessionApprovedTypes.has("ALL") ||
+    (actionType ? sessionApprovedTypes.has(actionType) : false)
+  );
+}
+
+/**
+ * Clears all in-memory session approvals.
+ */
+export function clearSessionApprovals() {
+  sessionApprovedTypes.clear();
+}
+
 /**
  * Checks whether approval is required for a given project and action.
  *
@@ -18,6 +48,11 @@ import { logger, formatBytes } from "../utils/logger.js";
  * @returns {boolean}
  */
 export function isApprovalRequired(project, actionType) {
+  // If user selected "Always allow for this session"
+  if (isSessionApprovalAllowed(actionType)) {
+    return false;
+  }
+
   // Explicit CLI flag override via env
   const envApproval =
     getEnv("APPROVAL_MODE", "") || getEnv("CONFIRM_CHANGES", "");
@@ -102,7 +137,7 @@ async function promptApproval({
     newSize || (newContent ? Buffer.byteLength(newContent, "utf8") : 0);
 
   const title =
-    pc.yellow("⚠") + " " + pc.bold(pc.white("AI CHANGE APPROVAL REQUIRED"));
+    pc.yellow("▲") + " " + pc.bold(pc.white("AI CHANGE APPROVAL REQUIRED"));
   const rows = [
     pc.bold(pc.white(type === "EXEC" ? "EXECUTE COMMAND" : `${type} FILE`)),
     pc.bold(pc.white(displayTarget)),
@@ -149,7 +184,7 @@ async function promptApproval({
     );
     rows.push("");
     rows.push(
-      pc.yellow(" ⚠ This file will be permanently deleted from the workspace."),
+      pc.yellow(" ▲ This file will be permanently deleted from the workspace."),
     );
     rows.push(pc.dim(`   Size: ${formatBytes(size)}`));
   } else if (type === "EXEC") {
@@ -159,7 +194,7 @@ async function promptApproval({
     rows.push("");
     rows.push(
       pc.yellow(
-        " ⚠ This process will execute directly in your project workspace.",
+        " ▲ This process will execute directly in your project workspace.",
       ),
     );
   }
@@ -178,24 +213,30 @@ async function promptApproval({
 
   function printStatusBar() {
     console.log("");
+    const sessionTag =
+      sessionApprovedTypes.size > 0
+        ? ` ${pc.dim("·")} ${pc.green(`Trusted: ${Array.from(sessionApprovedTypes).join(", ")}`)}`
+        : "";
     console.log(
-      `${pc.green("•")} ${pc.white(clientName)} ${pc.dim("·")} ${pc.white(permText)} ${pc.dim("·")} ${pc.yellow(approvalText)} ${pc.dim("·")} ${pc.white("Requests " + reqCount)}`,
+      `${pc.green("•")} ${pc.white(clientName)} ${pc.dim("·")} ${pc.white(permText)} ${pc.dim("·")} ${pc.yellow(approvalText)}${sessionTag} ${pc.dim("·")} ${pc.white("Requests " + reqCount)}`,
     );
-    console.log(pc.dim("─".repeat(52)));
+    console.log(pc.dim("─".repeat(69)));
   }
 
   function printPrompt() {
-    if (type === "WRITE") {
-      process.stdout.write(
-        pc.bold(pc.cyan("Apply changes? ")) +
-          `[${pc.green("y")}] Accept  [${pc.red("n")}] Reject  [${pc.cyan("d")}] Full diff  [${pc.cyan("q")}] Quit: `,
-      );
-    } else {
-      process.stdout.write(
-        pc.bold(pc.cyan("Execute action? ")) +
-          `[${pc.green("y")}] Accept  [${pc.red("n")}] Reject  [${pc.cyan("q")}] Quit: `,
-      );
-    }
+    const promptPrefix =
+      type === "WRITE" ? "Apply changes?" : "Execute action?";
+    const options = [
+      `[${pc.green("y")}] Allow once`,
+      `[${pc.green("a")}] Always allow`,
+      `[${pc.red("n")}] Reject`,
+      type === "WRITE" ? `[${pc.cyan("d")}] Full diff` : null,
+      `[${pc.dim("q")}] Quit`,
+    ]
+      .filter(Boolean)
+      .join("  ");
+
+    process.stdout.write(`${pc.bold(pc.cyan(promptPrefix))} ${options}: `);
   }
 
   notify({
@@ -300,24 +341,61 @@ async function promptApproval({
       if (input === "y" || input === "return" || input === "enter") {
         cleanup();
         process.stdout.write(pc.green("y\n\n"));
-        console.log(pc.green("✓ Change accepted"));
-        const writtenLabel =
+        const acceptedTitle =
+          type === "EXEC" ? "✓ Command accepted" : "✓ Change accepted";
+        const actionLabel =
           type === "WRITE"
             ? `${formatBytes(expectedBytes)} written`
-            : "deleted";
+            : type === "DELETE"
+              ? "deleted"
+              : "executing command";
+
+        console.log(pc.green(acceptedTitle));
         console.log(
-          `  ${pc.white(relPath)} ${pc.dim("·")} ${pc.yellow(writtenLabel)}\n`,
+          `  ${pc.white(displayTarget)} ${pc.dim("·")} ${pc.yellow(actionLabel)}\n`,
         );
         resolve({ approved: true });
+        return;
+      }
+
+      if (input === "a") {
+        cleanup();
+        allowSessionApproval(type);
+        process.stdout.write(pc.green("a\n\n"));
+        const acceptedTitle =
+          type === "EXEC"
+            ? "✓ Command accepted (session trusted)"
+            : "✓ Change accepted (session trusted)";
+        const actionLabel =
+          type === "WRITE"
+            ? `${formatBytes(expectedBytes)} written`
+            : type === "DELETE"
+              ? "deleted"
+              : "executing command";
+
+        console.log(pc.green(acceptedTitle));
+        console.log(
+          `  ${pc.white(displayTarget)} ${pc.dim("·")} ${pc.yellow(actionLabel)}`,
+        );
+        console.log(
+          pc.dim(
+            `  Future ${type} operations will be auto-approved for this session.\n`,
+          ),
+        );
+        resolve({ approved: true, sessionTrusted: true });
         return;
       }
 
       if (input === "n" || input === "escape") {
         cleanup();
         process.stdout.write(pc.red("n\n\n"));
-        console.log(pc.red("✖ Change rejected"));
+        const rejectedTitle =
+          type === "EXEC" ? "✖ Command rejected" : "✖ Change rejected";
+        const rejectDetail =
+          type === "EXEC" ? "execution cancelled" : "changes discarded";
+        console.log(pc.red(rejectedTitle));
         console.log(
-          `  ${pc.white(relPath)} ${pc.dim("·")} ${pc.dim("changes discarded")}\n`,
+          `  ${pc.white(displayTarget)} ${pc.dim("·")} ${pc.dim(rejectDetail)}\n`,
         );
         resolve({
           approved: false,
@@ -330,9 +408,11 @@ async function promptApproval({
       if (input === "q") {
         cleanup();
         process.stdout.write(pc.cyan("q\n\n"));
-        console.log(pc.red("✖ Change rejected"));
+        const rejectedTitle =
+          type === "EXEC" ? "✖ Command cancelled" : "✖ Change cancelled";
+        console.log(pc.red(rejectedTitle));
         console.log(
-          `  ${pc.white(relPath)} ${pc.dim("·")} ${pc.dim("cancelled")}\n`,
+          `  ${pc.white(displayTarget)} ${pc.dim("·")} ${pc.dim("cancelled")}\n`,
         );
         resolve({
           approved: false,
@@ -433,4 +513,7 @@ export default {
   isApprovalRequired,
   requestApproval,
   verifyActionApproval,
+  allowSessionApproval,
+  isSessionApprovalAllowed,
+  clearSessionApprovals,
 };

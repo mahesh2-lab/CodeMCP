@@ -8,6 +8,7 @@ import {
   createAuthCode,
   consumeAuthCode,
   generateAccessToken,
+  TOKEN_EXPIRY_SECONDS,
 } from "../services/oauth.js";
 import { getActiveProject } from "../services/projects.js";
 import { logger } from "../utils/logger.js";
@@ -238,7 +239,7 @@ router.post("/token", (req, res) => {
   return res.json({
     access_token: accessToken,
     token_type: "Bearer",
-    expires_in: 3600,
+    expires_in: TOKEN_EXPIRY_SECONDS,
     scope: verification.record.scope || "mcp",
   });
 });
