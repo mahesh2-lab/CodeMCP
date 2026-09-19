@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
-const packageDir = path.join(rootDir, "package");
 
 // Read package.json to get dependencies that should be kept external
 const pkg = JSON.parse(
@@ -20,29 +19,18 @@ const externalDeps = [
 ];
 
 async function build() {
+  // Ensure the README from package/ is the README used for the npm package
+  const packageReadmeSrc = path.join(rootDir, "package", "README.md");
+  if (fs.existsSync(packageReadmeSrc)) {
+    fs.copyFileSync(packageReadmeSrc, path.join(rootDir, "README.md"));
+    console.log("📄 Copied package/README.md to README.md for npm package");
+  }
+
   console.log("🧹 Cleaning dist directory...");
   if (fs.existsSync(distDir)) {
     fs.rmSync(distDir, { recursive: true, force: true });
   }
   fs.mkdirSync(distDir, { recursive: true });
-
-  console.log("📦 Preparing package staging folder...");
-  if (!fs.existsSync(packageDir)) {
-    fs.mkdirSync(packageDir, { recursive: true });
-  }
-
-  const packageReadmePath = path.join(packageDir, "README.md");
-  if (!fs.existsSync(packageReadmePath)) {
-    const packageReadmeSource = path.join(rootDir, "README.md");
-    if (fs.existsSync(packageReadmeSource)) {
-      fs.copyFileSync(packageReadmeSource, packageReadmePath);
-    }
-  }
-
-  const licenseSrc = path.join(rootDir, "LICENSE");
-  if (fs.existsSync(licenseSrc)) {
-    fs.copyFileSync(licenseSrc, path.join(packageDir, "LICENSE"));
-  }
 
   // Copy assets
   const assetsDir = path.join(rootDir, "assets");
@@ -72,11 +60,9 @@ async function build() {
   // Copy views content (index.html, style.css)
   const viewsContentSrc = path.join(rootDir, "src", "views", "content");
   const distContentDir = path.join(distDir, "content");
-  const packageContentDir = path.join(packageDir, "content");
   if (fs.existsSync(viewsContentSrc)) {
     fs.cpSync(viewsContentSrc, distContentDir, { recursive: true });
-    fs.cpSync(viewsContentSrc, packageContentDir, { recursive: true });
-    console.log("📄 Copied views/content to dist/content & package/content");
+    console.log("📄 Copied views/content to dist/content");
   }
 
   console.log(
