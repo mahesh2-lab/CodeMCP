@@ -10,7 +10,7 @@ CodeMCP connects AI assistants (Claude, Cursor, Windsurf, etc.) to your local pr
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 Run directly inside any project folder using `npx` (no installation required):
 
@@ -29,7 +29,7 @@ When started, CodeMCP will automatically:
 
 ---
 
-## 📦 Global Installation
+## Global Installation
 
 If you prefer to install CodeMCP globally:
 
@@ -49,7 +49,7 @@ codemcp ./path/to/project --no-tunnel
 
 ---
 
-## 🤖 Connecting to Your AI Client
+## Connecting to Your AI Client
 
 ### 1. Claude Desktop
 
@@ -78,7 +78,7 @@ Add CodeMCP to your `claude_desktop_config.json`:
 
 ---
 
-## 🛡️ Interactive Approvals
+## Interactive Approvals
 
 By default, CodeMCP protects your codebase by asking for confirmation in the terminal before making changes:
 
@@ -125,7 +125,7 @@ codemcp --approval destructive
 
 ---
 
-## ⌨️ Common CLI Commands & Options
+## Common CLI Commands & Options
 
 ### Commands
 
@@ -151,7 +151,7 @@ codemcp --approval destructive
 
 ---
 
-## ⚙️ Configuration (`codemcp.json`)
+## Configuration (`codemcp.json`)
 
 CodeMCP reads `codemcp.json` in your project root:
 
@@ -172,18 +172,18 @@ CodeMCP reads `codemcp.json` in your project root:
 
 ---
 
-## 🧰 Available Tools
+## Available Tools
 
 When connected, AI assistants can use these project-scoped tools:
 
-- 📖 **Read & Explore**: `list_files`, `find_file`, `read_file`, `search_code` (fast ripgrep search)
-- ✏️ **Edit & Write**: `write_file`, `edit_file`, `delete_file`
-- 💻 **Execute**: `execute_command` (runs allowlisted dev binaries like `git`, `npm`, `node`, `pytest`, `cargo`, etc.)
-- 🧠 **Context & Memory**: `get_project_context`, `record_memory`, `get_memory`, `finish`
+- **Read & Explore**: `list_files`, `find_file`, `read_file`, `search_code` (fast ripgrep search)
+- **Edit & Write**: `write_file`, `edit_file`, `delete_file`
+- **Execute**: `execute_command` (runs allowlisted dev binaries like `git`, `npm`, `node`, `pytest`, `cargo`, etc.)
+- **Context & Memory**: `get_project_context`, `record_memory`, `get_memory`, `finish`
 
 ---
 
-## 🔗 Links & Resources
+## Links & Resources
 
 - **Full Documentation & Source**: [github.com/mahesh2-lab/CodeMCP](https://github.com/mahesh2-lab/CodeMCP)
 - **Website**: [code-mcp.vercel.app](https://code-mcp.vercel.app/)
