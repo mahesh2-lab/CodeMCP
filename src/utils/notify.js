@@ -71,6 +71,9 @@ function escapeForXml(str) {
  * @param {string} [iconPath=""]
  */
 export function notify(titleOrOptions = SENDER_NAME, message = "", iconPath = "") {
+  if (process.env.NOTIFY === "false") {
+    return;
+  }
   try {
     let title = SENDER_NAME;
     let msg = "";
