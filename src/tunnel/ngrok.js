@@ -265,10 +265,57 @@ export async function getOrCreateDomain(options = "codemcp-agent") {
 }
 
 /**
- * Kills active ngrok sessions and terminates orphaned external processes
- * holding the ngrok tunnel or domain.
+ * Stops all remote ngrok tunnel sessions and endpoints via the ngrok API.
+ *
+ * @param {string} apiKey
  */
-export async function killExistingTunnels() {
+export async function closeRemoteNgrokSessions(apiKey) {
+  if (!apiKey) return;
+  const headers = getHeaders(apiKey);
+
+  try {
+    const res = await fetch("https://api.ngrok.com/tunnel_sessions", { headers });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.tunnel_sessions) && data.tunnel_sessions.length > 0) {
+        await Promise.allSettled(
+          data.tunnel_sessions.map((session) =>
+            fetch(`https://api.ngrok.com/tunnel_sessions/${session.id}/stop`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({}),
+            }),
+          ),
+        );
+      }
+    }
+  } catch {}
+
+  try {
+    const res = await fetch("https://api.ngrok.com/endpoints", { headers });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.endpoints) && data.endpoints.length > 0) {
+        await Promise.allSettled(
+          data.endpoints.map((ep) =>
+            fetch(`https://api.ngrok.com/endpoints/${ep.id}`, {
+              method: "DELETE",
+              headers,
+            }),
+          ),
+        );
+      }
+    }
+  } catch {}
+}
+
+/**
+ * Kills active ngrok sessions and terminates orphaned external processes
+ * holding the ngrok tunnel or domain, and closes remote ngrok sessions via API.
+ *
+ * @param {string} [apiKey]
+ */
+export async function killExistingTunnels(apiKey = null) {
   // 1. In-process cleanup via @ngrok/ngrok
   try {
     if (typeof ngrok.disconnect === "function") await ngrok.disconnect();
@@ -296,6 +343,12 @@ export async function killExistingTunnels() {
       });
     }
   } catch {}
+
+  // 3. Stop remote ngrok tunnel sessions & endpoints via API
+  const key = apiKey || cachedApiKey || getEnv("NGROK_API_KEY");
+  if (key) {
+    await closeRemoteNgrokSessions(key);
+  }
 }
 
 /**
@@ -307,6 +360,7 @@ export async function startTunnel(port, description = "codemcp-agent") {
     return null;
   }
 
+  const apiKey = await ensureApiKey();
   const authtoken = await getOrCreateToken(description);
   if (!authtoken) {
     logger.tunnelWarn("Missing ngrok authtoken. Skipping tunnel.");
@@ -315,11 +369,11 @@ export async function startTunnel(port, description = "codemcp-agent") {
 
   const domain = await getOrCreateDomain(description);
 
-  // Clear any existing in-process or orphaned tunnel sessions before starting
-  await killExistingTunnels();
+  // Clear any existing in-process, orphaned, or remote tunnel sessions before starting
+  await killExistingTunnels(apiKey);
 
   let attempts = 0;
-  const maxAttempts = 2;
+  const maxAttempts = 3;
 
   while (attempts < maxAttempts) {
     attempts++;
@@ -333,14 +387,16 @@ export async function startTunnel(port, description = "codemcp-agent") {
     } catch (err) {
       const message = String(err?.message || err);
 
-      if (/already online/i.test(message) && attempts < maxAttempts) {
-        logger.tunnelWarn(
-          `Endpoint '${domain || "tunnel"}' is already online. Terminating previous tunnels and retrying...`,
-        );
-        await killExistingTunnels();
-        // Wait 1.5s for the ngrok edge to release the domain reservation
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        continue;
+      if (/already online/i.test(message)) {
+        logger.tunnelWarn("Already found existing session, killing it...");
+        await killExistingTunnels(apiKey);
+        // Wait 2.5s for the ngrok edge to release the domain reservation
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        if (attempts < maxAttempts) {
+          continue;
+        }
+        logger.tunnelWarn("Existing session could not be cleared. Continuing with local URL.");
+        return null;
       }
 
       if (/more than \d+ endpoints|endpoint.*limit|quota/i.test(message)) {

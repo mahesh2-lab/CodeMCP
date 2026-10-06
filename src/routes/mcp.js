@@ -42,6 +42,7 @@ async function buildServerInstructions(project) {
     "Use list_files and read_file to inspect the project structure and source code.",
     "Use get_project_context to retrieve full project metadata and instructions at any time.",
     "Use record_memory to preserve handoff notes, key architectural decisions, and next steps for other AI assistants.",
+    "To run and visually test a web app, call browser_start (with a start command and port), then browser_act / browser_screenshot / browser_inspect, and always finish with browser_close. The browser is disposable and limited to localhost.",
     "When calling write_file, delete_file, or execute_command, provide a concise 'summary' parameter explaining your change or intent so succeeding AI assistants understand what you did.",
   ]
     .filter(Boolean)

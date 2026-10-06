@@ -23,6 +23,7 @@ npx @mahesh2-lab/codemcp --no-tunnel
 ```
 
 When started, CodeMCP will automatically:
+
 1. Detect or initialize project metadata (`codemcp.json`, `.mcpignore`, `CONTEXT.md`).
 2. Display your **Local URL**, **Global URL** (if tunneled), and a secure **Owner Password**.
 3. Listen for incoming MCP tool requests.
@@ -60,7 +61,12 @@ Add CodeMCP to your `claude_desktop_config.json`:
   "mcpServers": {
     "my-project": {
       "command": "npx",
-      "args": ["-y", "@mahesh2-lab/codemcp", "--no-tunnel", "/absolute/path/to/project"]
+      "args": [
+        "-y",
+        "@mahesh2-lab/codemcp",
+        "--no-tunnel",
+        "/absolute/path/to/project"
+      ]
     }
   }
 }
@@ -103,15 +109,16 @@ Approve this action?
 
 ### Approval Shortcuts
 
-| Key | Action |
-| :---: | :--- |
-| **`y`** | **Allow once**: Approves this single operation. |
+|   Key   | Action                                                                                       |
+| :-----: | :------------------------------------------------------------------------------------------- |
+| **`y`** | **Allow once**: Approves this single operation.                                              |
 | **`a`** | **Always allow**: Approves this operation and all future operations for the current session. |
-| **`n`** | **Reject**: Blocks the operation with a rejection message returned to the AI. |
-| **`d`** | **View full diff**: Expands the entire unified diff. |
-| **`q`** | **Cancel**: Aborts the operation immediately. |
+| **`n`** | **Reject**: Blocks the operation with a rejection message returned to the AI.                |
+| **`d`** | **View full diff**: Expands the entire unified diff.                                         |
+| **`q`** | **Cancel**: Aborts the operation immediately.                                                |
 
 To disable approval prompts completely:
+
 ```bash
 codemcp --no-approval
 # Or persist in configuration:
@@ -119,6 +126,7 @@ codemcp approval off
 ```
 
 To require approval only for deletions and commands:
+
 ```bash
 codemcp --approval destructive
 ```
@@ -129,25 +137,25 @@ codemcp --approval destructive
 
 ### Commands
 
-| Command | Description |
-| :--- | :--- |
-| `codemcp [path]` | Start the MCP server for the given project (defaults to current directory). |
-| `codemcp init [path]` | Create or update `codemcp.json`, `.mcpignore`, and `CONTEXT.md`. |
-| `codemcp info [path]` | Display project permissions, status, and indexed file count. |
-| `codemcp approval <on\|off>` | Turn approval prompts on or off in `codemcp.json`. |
-| `codemcp credentials status` | Inspect stored encrypted credentials. |
-| `codemcp credentials set <key> <val>` | Store credentials securely (e.g. `NGROK_API_KEY`). |
+| Command                               | Description                                                                 |
+| :------------------------------------ | :-------------------------------------------------------------------------- |
+| `codemcp [path]`                      | Start the MCP server for the given project (defaults to current directory). |
+| `codemcp init [path]`                 | Create or update `codemcp.json`, `.mcpignore`, and `CONTEXT.md`.            |
+| `codemcp info [path]`                 | Display project permissions, status, and indexed file count.                |
+| `codemcp approval <on\|off>`          | Turn approval prompts on or off in `codemcp.json`.                          |
+| `codemcp credentials status`          | Inspect stored encrypted credentials.                                       |
+| `codemcp credentials set <key> <val>` | Store credentials securely (e.g. `NGROK_API_KEY`).                          |
 
 ### Options
 
-| Flag | Description | Default |
-| :--- | :--- | :--- |
-| `-p, --port <number>` | Port to listen on (auto-detects next free port if busy) | `4173` |
-| `--no-tunnel` | Run locally without creating an ngrok tunnel | Tunneled |
-| `-a, --approval <mode>` | Approval mode: `true`/`always`, `destructive`, or `false`/`never` | `true` |
-| `--no-approval` | Disable all confirmation prompts (auto-apply changes) | Prompting |
-| `-y, --yes` | Skip interactive setup prompts and accept defaults | Interactive |
-| `-h, --help` | Show CLI help | |
+| Flag                    | Description                                                       | Default     |
+| :---------------------- | :---------------------------------------------------------------- | :---------- |
+| `-p, --port <number>`   | Port to listen on (auto-detects next free port if busy)           | `4173`      |
+| `--no-tunnel`           | Run locally without creating an ngrok tunnel                      | Tunneled    |
+| `-a, --approval <mode>` | Approval mode: `true`/`always`, `destructive`, or `false`/`never` | `true`      |
+| `--no-approval`         | Disable all confirmation prompts (auto-apply changes)             | Prompting   |
+| `-y, --yes`             | Skip interactive setup prompts and accept defaults                | Interactive |
+| `-h, --help`            | Show CLI help                                                     |             |
 
 ---
 

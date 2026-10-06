@@ -32,7 +32,9 @@ try {
     fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"),
   );
   if (pkg.version) pkgVersion = pkg.version;
-} catch {}
+} catch {
+  console.error(pc.red(`Failed to read package.json: ${err.message}`));
+}
 
 const program = new Command();
 

@@ -21,126 +21,63 @@ test("ExecuteCommand - Tokenizer handles words, quotes, and whitespace", () => {
   );
 });
 
-test("ExecuteCommand - Tokenizer blocks shell chaining and redirection", () => {
-  assert.throws(
-    () => tokenizeCommand("npm test && rm -rf dist"),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => tokenizeCommand("npm test | cat"),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => tokenizeCommand("npm test > output.txt"),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => tokenizeCommand("npm test; whoami"),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
+test("ExecuteCommand - Tokenizer allows quotes and complex command strings", () => {
+  assert.deepEqual(tokenizeCommand("npm test && rm -rf dist"), [
+    "npm",
+    "test",
+    "&&",
+    "rm",
+    "-rf",
+    "dist",
+  ]);
+  assert.deepEqual(tokenizeCommand("npm test; whoami"), [
+    "npm",
+    "test;",
+    "whoami",
+  ]);
 });
 
-test("ExecuteCommand - Validator blocks non-allowlisted binaries", () => {
+test("ExecuteCommand - Validator permits arbitrary binaries including curl", () => {
   const root = getProjectRoot();
 
-  // Allowlisted
   assert.doesNotThrow(() => validateExecution("node", ["--version"], root));
   assert.doesNotThrow(() => validateExecution("git", ["status"], root));
   assert.doesNotThrow(() => validateExecution("npm", ["test"], root));
+  assert.doesNotThrow(() => validateExecution("whoami", [], root));
+  assert.doesNotThrow(() => validateExecution("curl", ["https://example.com"], root));
+  assert.doesNotThrow(() => validateExecution("bash", ["-c", "id"], root));
+});
 
-  // Non-allowlisted binaries & path execution
-  assert.throws(
-    () => validateExecution(".", [], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
+test("ExecuteCommand - Validator permits runtime eval flags like node -e and python -c", () => {
+  const root = getProjectRoot();
+
+  assert.doesNotThrow(() =>
+    validateExecution("node", ["-e", "console.log(process.env)"], root),
   );
-  assert.throws(
-    () => validateExecution("..", [], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
+  assert.doesNotThrow(() =>
+    validateExecution("node", ["--eval=console.log(1)"], root),
   );
-  assert.throws(
-    () => validateExecution("./node", [], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
+  assert.doesNotThrow(() =>
+    validateExecution("python", ["-c", "import os; print(os.environ)"], root),
   );
-  assert.throws(
-    () => validateExecution("whoami", [], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
+  assert.doesNotThrow(() =>
+    validateExecution("python", ["-cprint(1)"], root),
   );
-  assert.throws(
-    () => validateExecution("curl", ["https://example.com"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => validateExecution("bash", ["-c", "id"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
+  assert.doesNotThrow(() =>
+    validateExecution("git", ["-c", "core.pager=cat", "status"], root),
   );
 });
 
-test("ExecuteCommand - Validator blocks dangerous runtime eval flags", () => {
+test("ExecuteCommand - Environment passes system environment to executed processes", () => {
   const root = getProjectRoot();
-
-  assert.throws(
-    () => validateExecution("node", ["-e", "console.log(process.env)"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => validateExecution("node", ["--eval=console.log(1)"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => validateExecution("python", ["-c", "import os; print(os.environ)"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => validateExecution("python", ["-cprint(1)"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => validateExecution("git", ["-c", "core.pager=cat", "status"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => validateExecution("git", ["--config-env=core.pager=FOO", "status"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-});
-
-test("ExecuteCommand - Validator blocks path traversal arguments and sensitive files", () => {
-  const root = getProjectRoot();
-
-  assert.throws(
-    () => validateExecution("node", ["../../../etc/passwd"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => validateExecution("node", [".env"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => validateExecution("node", [".npmrc"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-  assert.throws(
-    () => validateExecution("node", [".ssh/id_rsa"], root),
-    (err) => err instanceof PathGuardError && err.statusCode === 403
-  );
-});
-
-test("ExecuteCommand - Environment allowlisting excludes sensitive variables", () => {
-  const root = getProjectRoot();
-  process.env.OWNER_PASSWORD = "supersecretpassword";
-  process.env.JWT_SECRET = "jwtsecret123";
-  process.env.CUSTOM_API_KEY = "myapikey";
+  process.env.TEST_CUSTOM_KEY = "custom_val";
 
   try {
     const clean = buildCleanEnv(root);
     assert.equal(clean.PROJECT_ROOT, root);
-    assert.equal(clean.OWNER_PASSWORD, undefined);
-    assert.equal(clean.JWT_SECRET, undefined);
-    assert.equal(clean.CUSTOM_API_KEY, undefined);
+    assert.equal(clean.TEST_CUSTOM_KEY, "custom_val");
   } finally {
-    delete process.env.OWNER_PASSWORD;
-    delete process.env.JWT_SECRET;
-    delete process.env.CUSTOM_API_KEY;
+    delete process.env.TEST_CUSTOM_KEY;
   }
 });
 

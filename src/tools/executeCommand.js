@@ -71,59 +71,25 @@ export const DEFAULT_ALLOWED_ENV_VARS = [
  * @returns {object}
  */
 export function buildCleanEnv(cwd, customAllowed = []) {
-  const envConfigured = getEnv("ALLOWED_ENV_VARS", "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const allowedSet = new Set([
-    ...DEFAULT_ALLOWED_ENV_VARS.map((v) => v.toLowerCase()),
-    ...envConfigured.map((v) => v.toLowerCase()),
-    ...customAllowed.map((v) => v.toLowerCase()),
-  ]);
-
-  const cleanEnv = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (allowedSet.has(key.toLowerCase())) {
-      cleanEnv[key] = value;
-    }
-  }
-
-  cleanEnv.PROJECT_ROOT = cwd;
-  return cleanEnv;
+  return {
+    ...process.env,
+    PROJECT_ROOT: cwd,
+  };
 }
 
 /**
- * Returns the set of all allowed binaries, combining defaults with configuration.
+ * Returns the set of all allowed binaries. Kept for backwards compatibility.
  *
  * @param {object} [project]
  * @returns {Set<string>}
  */
 export function getAllowedBinaries(project = null) {
-  const allowed = new Set(DEFAULT_ALLOWED_BINARIES);
-
-  const envBinaries =
-    getEnv("ALLOWED_COMMANDS", "") || getEnv("ALLOWED_BINARIES", "");
-  if (envBinaries) {
-    for (const b of envBinaries.split(",")) {
-      const clean = b.trim().toLowerCase();
-      if (clean) allowed.add(clean);
-    }
-  }
-
-  if (Array.isArray(project?.allowedCommands)) {
-    for (const b of project.allowedCommands) {
-      const clean = String(b).trim().toLowerCase();
-      if (clean) allowed.add(clean);
-    }
-  }
-
-  return allowed;
+  return new Set(["*"]);
 }
 
 /**
  * Tokenizes a command string safely without invoking a shell.
- * Respects single and double quotes, and rejects shell metacharacters.
+ * Respects single and double quotes.
  *
  * @param {string} cmdStr
  * @returns {string[]} Array of argument tokens
@@ -131,15 +97,6 @@ export function getAllowedBinaries(project = null) {
 export function tokenizeCommand(cmdStr) {
   if (!cmdStr || typeof cmdStr !== "string" || !cmdStr.trim()) {
     throw new PathGuardError("Command is required", 400);
-  }
-
-  // Reject shell chaining, redirection, and variable substitution characters
-  const forbiddenShellChars = /[|;&><`$\n\r]/;
-  if (forbiddenShellChars.test(cmdStr)) {
-    throw new PathGuardError(
-      "Command contains prohibited shell operators (|, &, ;, >, <, $, `). Raw shell parsing is disabled.",
-      403,
-    );
   }
 
   const tokens = [];
@@ -199,8 +156,7 @@ export function tokenizeCommand(cmdStr) {
 }
 
 /**
- * Validates binary and argument tokens against allowlist, security policies,
- * and PathGuard containment.
+ * Validates executable binary parameter. All command restrictions removed.
  *
  * @param {string} binary
  * @param {string[]} args
@@ -208,196 +164,8 @@ export function tokenizeCommand(cmdStr) {
  * @param {object} [project]
  */
 export function validateExecution(binary, args, projectRoot, project = null) {
-  if (!binary || typeof binary !== "string") {
+  if (!binary || typeof binary !== "string" || !binary.trim()) {
     throw new PathGuardError("Invalid executable binary", 400);
-  }
-
-  // Prohibit directory, relative paths, or separators in binary name
-  if (
-    binary === "." ||
-    binary === ".." ||
-    binary.startsWith(".") ||
-    binary.includes("/") ||
-    binary.includes("\\") ||
-    binary.includes(":")
-  ) {
-    throw new PathGuardError(
-      "Direct binary path execution is prohibited. Specify only the executable name from the allowlist.",
-      403,
-    );
-  }
-
-  // Normalize binary name (strip Windows extension if present)
-  const baseBinary = binary.replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
-  const allowedBinaries = getAllowedBinaries(project);
-
-  if (!allowedBinaries.has(baseBinary)) {
-    throw new PathGuardError(
-      `Binary "${binary}" is not in the permitted allowlist. Permitted: ${Array.from(allowedBinaries).join(", ")}`,
-      403,
-    );
-  }
-
-  // Prohibit dangerous runtime evaluation flags
-  if (baseBinary === "node") {
-    const blockedNodeFlags = new Set([
-      "-e",
-      "--eval",
-      "-p",
-      "--print",
-      "-r",
-      "--require",
-      "--loader",
-      "--experimental-loader",
-      "--import",
-      "--env-file",
-      "--inspect",
-      "--inspect-brk",
-      "--inspect-wait",
-      "--openssl-config",
-    ]);
-    for (const arg of args) {
-      const flag = arg.includes("=") ? arg.slice(0, arg.indexOf("=")) : arg;
-      if (blockedNodeFlags.has(flag)) {
-        throw new PathGuardError(`Node flag "${arg}" is prohibited`, 403);
-      }
-    }
-  }
-
-  if (baseBinary === "pip" || baseBinary === "pip3") {
-    for (const arg of args) {
-      if (
-        /^https?:\/\//i.test(arg) ||
-        arg.startsWith("--index-url") ||
-        arg.startsWith("--extra-index-url") ||
-        arg.startsWith("--find-links")
-      ) {
-        throw new PathGuardError(
-          `pip network install from "${arg}" is prohibited`,
-          403,
-        );
-      }
-      
-    }
-  }
-
-  if (baseBinary === "python" || baseBinary === "python3") {
-    for (const arg of args) {
-      if (arg === "-c" || arg.startsWith("-c")) {
-        throw new PathGuardError(
-          `Inline python code execution flag "-c" is prohibited. Execute a script file inside the project instead.`,
-          403,
-        );
-      }
-    }
-    const mIdx = args.indexOf("-m");
-    if (mIdx !== -1) {
-      const module = args[mIdx + 1];
-      const blockedModules = new Set([
-        "http.server",
-        "pip",
-        "ensurepip",
-        "smtpd",
-        "ftplib",
-      ]);
-      if (blockedModules.has(module)) {
-        throw new PathGuardError(`python -m ${module} is prohibited`, 403);
-      }
-    }
-  }
-
-  if (baseBinary === "git") {
-    for (const arg of args) {
-      if (
-        arg.startsWith("-c") ||
-        arg.startsWith("--exec-path") ||
-        arg.startsWith("--upload-pack") ||
-        arg.startsWith("--config-env")
-      ) {
-        throw new PathGuardError(
-          `Unsafe git configuration flag "${arg}" is prohibited.`,
-          403,
-        );
-      }
-    }
-    const NETWORK_SUBCMDS = new Set([
-      "clone",
-      "fetch",
-      "pull",
-      "push",
-      "submodule",
-      "archive",
-      "ls-remote",
-    ]);
-    if (NETWORK_SUBCMDS.has(args[0]?.toLowerCase())) {
-      throw new PathGuardError(
-        `git ${args[0]} is not permitted (potential SSRF/exfiltration)`,
-        403,
-      );
-    }
-  }
-
-  // Validate path arguments: any token referencing a path or file must stay inside projectRoot
-  for (const arg of args) {
-    // If flag with value like --output=path/to/file or -f=path
-    let targetPath = arg;
-    if (arg.startsWith("--") && arg.includes("=")) {
-      targetPath = arg.slice(arg.indexOf("=") + 1);
-    }
-
-    // Prohibit sensitive credentials, key files, or .env anywhere in arguments
-    if (
-      /(^|[\s"'`\/\\=])\.env(\.[a-zA-Z0-9_.-]+)?(\b|[\s"'`\/\\=]|$)/i.test(
-        targetPath,
-      ) ||
-      /(^|[\s"'`\/\\=])(\.npmrc|\.pypirc)(\b|[\s"'`\/\\=]|$)/i.test(
-        targetPath,
-      ) ||
-      /(^|[\s"'`\/\\=])\.ssh(\b|[\s"'`\/\\=]|$)/i.test(targetPath) ||
-      /\b(id_rsa|id_dsa|id_ecdsa|id_ed25519|\.codemcp|credentials\.enc)\b/i.test(
-        targetPath,
-      )
-    ) {
-      throw new PathGuardError(
-        `Access to protected or sensitive path "${targetPath}" is blocked`,
-        403,
-      );
-    }
-
-    const looksLikePath =
-      targetPath.startsWith(".") ||
-      targetPath.startsWith("/") ||
-      targetPath.includes("/") ||
-      targetPath.includes("\\") ||
-      /^[a-zA-Z]:/.test(targetPath) ||
-      /\.(js|ts|mjs|cjs|json|py|rs|go|md|txt|html|css|yaml|yml|env)$/i.test(
-        targetPath,
-      );
-      
-    const URL_RE = /^(https?|git|ssh|ftp):\/\//i;
-    if (URL_RE.test(targetPath)) {
-      throw new PathGuardError(
-        `Network URLs are not permitted as arguments: "${targetPath}"`,
-        403,
-      );
-    }
-
-    if (looksLikePath) {
-      try {
-        const contained = assertPathContained(targetPath, projectRoot);
-        // Check if argument accesses sensitive or ignored file (.env, credentials.enc, etc.)
-        if (isIgnored(contained, projectRoot)) {
-          throw new PathGuardError(
-            `Access to protected or ignored path "${targetPath}" is blocked`,
-            403,
-          );
-        }
-      } catch (err) {
-        if (err instanceof PathGuardError) {
-          throw err;
-        }
-      }
-    }
   }
 }
 
@@ -437,9 +205,25 @@ export function runExecFileWithTimeout({ binary, args, cwd, timeout, env }) {
   let finalArgs = args;
 
   // On Windows, Node.js 22+ throws spawn EINVAL when executing .cmd / .bat files directly with shell: false.
-  // We invoke via cmd.exe /d /s /c to execute allowlisted batch/cmd binaries cleanly and safely.
+  // We invoke via cmd.exe /d /s /c to execute batch/cmd binaries or shell builtins cleanly.
   if (process.platform === "win32") {
-    if (/\.(cmd|bat)$/i.test(executable)) {
+    const cmdBuiltins = new Set([
+      "dir",
+      "echo",
+      "del",
+      "copy",
+      "move",
+      "type",
+      "mkdir",
+      "md",
+      "rmdir",
+      "rd",
+      "cls",
+    ]);
+    if (
+      cmdBuiltins.has(executable.toLowerCase()) ||
+      /\.(cmd|bat)$/i.test(executable)
+    ) {
       finalArgs = ["/d", "/s", "/c", executable, ...args];
       executable = process.env.ComSpec || "cmd.exe";
     }

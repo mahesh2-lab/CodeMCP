@@ -11,6 +11,7 @@ import { registerAskQuestionTool } from "./askQuestion.js";
 import { registerEditFileTool } from "./editFile.js";
 import { registerFindFileTool } from "./findFile.js";
 import { registerFinishTool } from "./finish.js";
+import { registerBrowserTools } from "./browser.js";
 import {
   createToolContext,
   wrapToolHandler,
@@ -50,6 +51,7 @@ export function registerTools(server, project) {
     registerDeleteFileTool(ctx);
     registerExecuteCommandTool(ctx);
     registerEditFileTool(ctx);
+    registerBrowserTools(ctx);
   }
 
   // 4. Client Compatibility Bridge:
@@ -100,4 +102,5 @@ export {
   registerEditFileTool,
   registerFindFileTool,
   registerFinishTool,
+  registerBrowserTools,
 };
