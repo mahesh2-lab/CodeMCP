@@ -194,6 +194,6 @@ When connected, AI assistants can use these project-scoped tools:
 ## Links & Resources
 
 - **Full Documentation & Source**: [github.com/mahesh2-lab/CodeMCP](https://github.com/mahesh2-lab/CodeMCP)
-- **Website**: [code-mcp.vercel.app](https://code-mcp.vercel.app/)
+- **Website**: [codemcp.heymahesh.in](https://codemcp.heymahesh.in/)
 - **Model Context Protocol**: [modelcontextprotocol.io](https://modelcontextprotocol.io/)
 - **License**: MIT
