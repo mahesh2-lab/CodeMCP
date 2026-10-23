@@ -1,10 +1,17 @@
 {
-  "name": "codemcp",
+  "name": "@mahesh2-lab/codemcp",
   "displayName": "codemcp",
   "description": "its a interface that connect local codebase to web llms",
   "version": "2.1.1",
   "type": "module",
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
+    "node": ">=18.0.0",
     "vscode": "^1.140.0"
   },
   "categories": [
@@ -13,13 +20,13 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "bin": {
-    "codemcp": "./bin/cli.js"
+    "codemcp": "bin/cli.js"
   },
   "author": "Mahesh",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mahesh2-lab/CodeMCP.git"
+    "url": "git+https://github.com/mahesh2-lab/CodeMCP.git"
   },
   "bugs": {
     "url": "https://github.com/mahesh2-lab/CodeMCP/issues"
