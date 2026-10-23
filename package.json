@@ -2,7 +2,7 @@
   "name": "codemcp",
   "displayName": "codemcp",
   "description": "its a interface that connect local codebase to web llms",
-  "version": "0.0.2",
+  "version": "2.1.0",
   "type": "module",
   "engines": {
     "vscode": "^1.140.0"
