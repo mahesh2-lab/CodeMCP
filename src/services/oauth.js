@@ -33,8 +33,11 @@ function loadPersistedClients() {
   }
 }
 
+const MAX_PERSISTED_CLIENTS = 100;
 function persistClients() {
-  setCredential(OAUTH_CLIENTS_KEY, JSON.stringify([...clientStore.values()]));
+  const allClients = [...clientStore.values()];
+  const capped = allClients.slice(-MAX_PERSISTED_CLIENTS);
+  setCredential(OAUTH_CLIENTS_KEY, JSON.stringify(capped));
 }
 
 loadPersistedClients();
@@ -42,8 +45,25 @@ loadPersistedClients();
 /** Auth code expiration: 5 minutes */
 export const AUTH_CODE_TTL_MS = 5 * 60 * 1000;
 
-/** JWT token expiration: 7 days (604,800 seconds) */
-export const TOKEN_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
+/** JWT token expiration: default 24 hours (86,400 seconds), configurable via TOKEN_EXPIRY_SECONDS */
+export const TOKEN_EXPIRY_SECONDS = parseInt(
+  getEnv("TOKEN_EXPIRY_SECONDS", String(24 * 60 * 60)),
+  10,
+) || 24 * 60 * 60;
+
+/** In-memory store for revoked access tokens and JTIs: ID -> expiresAtMs */
+export const revokedTokenStore = new Map();
+
+/**
+ * Sweeps expired revocations from the revocation store.
+ */
+export function cleanupExpiredRevocations(now = Date.now()) {
+  for (const [id, expiresAt] of revokedTokenStore.entries()) {
+    if (expiresAt <= now) {
+      revokedTokenStore.delete(id);
+    }
+  }
+}
 
 /**
  * Sweeps expired authorization codes to prevent in-memory accumulation.
@@ -56,8 +76,14 @@ export function cleanupExpiredAuthCodes(now = Date.now()) {
   }
 }
 
-const cleanupTimer = setInterval(cleanupExpiredAuthCodes, 60 * 1000);
+const cleanupTimer = setInterval(() => {
+  const now = Date.now();
+  cleanupExpiredAuthCodes(now);
+  cleanupExpiredRevocations(now);
+}, 60 * 1000);
 cleanupTimer.unref();
+
+let cachedJwtSecret = null;
 
 /**
  * Returns the effective JWT signing secret.
@@ -65,19 +91,24 @@ cleanupTimer.unref();
  * Persisting means the secret survives server restarts, so existing tokens remain valid.
  */
 export function getJwtSecret() {
+  if (cachedJwtSecret) return cachedJwtSecret;
+
   const envSecret = getEnv("JWT_SECRET", "");
   if (envSecret) {
-    return envSecret;
+    cachedJwtSecret = envSecret;
+    return cachedJwtSecret;
   }
 
   const vaultSecret = getCredential("JWT_SECRET", "");
   if (vaultSecret) {
-    return vaultSecret;
+    cachedJwtSecret = vaultSecret;
+    return cachedJwtSecret;
   }
 
   // First boot: generate a stable secret and save it to the vault
   const generated = crypto.randomBytes(32).toString("hex");
   setCredential("JWT_SECRET", generated);
+  cachedJwtSecret = generated;
   return generated;
 }
 
@@ -149,6 +180,39 @@ export function registerClient(metadata = {}) {
     throw new Error("At least one redirect_uri is required for registration");
   }
 
+  // Validate redirect URIs for secure protocols (reject non-localhost http://, javascript:, data:)
+  for (const uri of redirectUris) {
+    try {
+      const parsed = new URL(uri);
+      const isLoopback =
+        parsed.hostname === "localhost" ||
+        parsed.hostname === "127.0.0.1" ||
+        parsed.hostname === "[::1]";
+
+      if (parsed.protocol === "http:" && !isLoopback) {
+        throw new Error(
+          `Insecure HTTP redirect_uri '${uri}' rejected. Only https:// or localhost http:// are permitted.`,
+        );
+      }
+      if (
+        parsed.protocol === "javascript:" ||
+        parsed.protocol === "data:" ||
+        parsed.protocol === "file:"
+      ) {
+        throw new Error(`Dangerous URI scheme in redirect_uri '${uri}'`);
+      }
+    } catch (e) {
+      // Allow custom native app schemes like vscode:// or cursor://
+      if (
+        /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/.+/.test(uri) &&
+        !/^(javascript|data|file):/i.test(uri)
+      ) {
+        continue;
+      }
+      throw new Error(`Invalid redirect_uri '${uri}': ${e.message}`);
+    }
+  }
+
   const clientId = crypto.randomUUID();
   const clientName =
     typeof metadata.client_name === "string" && metadata.client_name.trim()
@@ -203,19 +267,25 @@ export function getOwnerPassword() {
     10,
   );
   const isExpired = !createdAt || Date.now() - createdAt > PASSWORD_ROTATION_MS;
+  const isLegacyWeak = existing && existing.length < 32;
 
-  if (existing && !isExpired) {
+  if (existing && !isExpired && !isLegacyWeak) {
     return existing;
   }
 
-  if (existing && isExpired) {
-    logger.serverInfo(
+  if (existing && isLegacyWeak) {
+    logger.serverInfo?.(
+      "Upgrading auto-generated password from legacy 64-bit to 128-bit cryptographic entropy.",
+    );
+  } else if (existing && isExpired) {
+    logger.serverInfo?.(
       "Auto-generated password has expired (7-day rotation). Generating a new one.",
     );
   }
 
   // Generate and persist both password + timestamp to the encrypted vault
-  const generated = crypto.randomBytes(8).toString("hex");
+  // Uses 16 random bytes (32 hex characters / 128 bits of cryptographic entropy)
+  const generated = crypto.randomBytes(16).toString("hex");
   setEnv("OWNER_PASSWORD", generated);
   setCredential("OWNER_PASSWORD_CREATED_AT", String(Date.now()));
   return generated;
@@ -422,12 +492,14 @@ export function generateAccessToken({
   };
 
   const now = Math.floor(Date.now() / 1000);
+  const jti = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
   const payload = {
     iss: baseUrl,
     sub,
     aud: [baseUrl, `${baseUrl}/mcp`],
     client_id: clientId,
     scope,
+    jti,
     iat: now,
     exp: now + expiresIn,
   };
@@ -451,7 +523,7 @@ export function generateAccessToken({
  * @param {string} token
  * @returns {{ valid: boolean, error?: string, payload?: object }}
  */
-export function verifyAccessToken(token) {
+export function verifyAccessToken(token, expectedAudience = null) {
   if (!token || typeof token !== "string") {
     return { valid: false, error: "Token missing" };
   }
@@ -493,5 +565,69 @@ export function verifyAccessToken(token) {
     return { valid: false, error: "Token has expired", payload };
   }
 
+  if (isTokenRevoked(token, payload.jti)) {
+    return { valid: false, error: "Token has been revoked", payload };
+  }
+
+  // Audience validation: ensure token was minted for this server instance
+  if (expectedAudience && payload.aud) {
+    const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    if (!audiences.includes(expectedAudience)) {
+      return { valid: false, error: "Invalid token audience", payload };
+    }
+  }
+
   return { valid: true, payload };
+}
+
+/**
+ * Revokes an access token (RFC 7009).
+ * Accepts the raw token string or its jti.
+ *
+ * @param {string} token
+ * @returns {boolean}
+ */
+export function revokeAccessToken(token) {
+  if (!token || typeof token !== "string") return false;
+
+  const hash = crypto.createHash("sha256").update(token).digest("hex");
+  let expMs = Date.now() + TOKEN_EXPIRY_SECONDS * 1000;
+
+  try {
+    const parts = token.split(".");
+    if (parts.length === 3) {
+      const payload = JSON.parse(base64UrlDecode(parts[1]).toString("utf8"));
+      if (payload.exp) {
+        expMs = payload.exp * 1000;
+      }
+      if (payload.jti) {
+        revokedTokenStore.set(payload.jti, expMs);
+      }
+    }
+  } catch {
+    // If not a decodable JWT, track by token hash
+  }
+
+  revokedTokenStore.set(hash, expMs);
+  return true;
+}
+
+/**
+ * Checks if a token or its jti has been marked as revoked.
+ *
+ * @param {string} token
+ * @param {string} [jti]
+ * @returns {boolean}
+ */
+export function isTokenRevoked(token, jti = null) {
+  if (jti && revokedTokenStore.has(jti)) {
+    return true;
+  }
+  if (token) {
+    const hash = crypto.createHash("sha256").update(token).digest("hex");
+    if (revokedTokenStore.has(hash)) {
+      return true;
+    }
+  }
+  return false;
 }

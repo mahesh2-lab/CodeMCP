@@ -60,8 +60,7 @@ export const logger = {
 
   // Log line prefix: "HH:MM:SS req_XXXX"
   prefix(explicitReqId) {
-    const reqId =
-      explicitReqId !== undefined ? explicitReqId : this.getCurrentRequestId();
+    const reqId = explicitReqId ?? this.getCurrentRequestId();
     return `${getTimestamp()} ${formatReqId(reqId)}`;
   },
 

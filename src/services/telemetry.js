@@ -94,11 +94,18 @@ export function getStatsBaseUrl() {
 
 /**
  * Checks whether telemetry reporting is enabled.
- * Telemetry is always active.
+ * Supports standard opt-out via DO_NOT_TRACK or CODEMCP_TELEMETRY_DISABLED.
  *
  * @returns {boolean}
  */
 export function isTelemetryEnabled() {
+  const dnt = process.env.DO_NOT_TRACK || getEnv("DO_NOT_TRACK", "");
+  const disabled =
+    process.env.CODEMCP_TELEMETRY_DISABLED ||
+    getEnv("CODEMCP_TELEMETRY_DISABLED", "");
+  if (dnt === "1" || dnt === "true" || disabled === "1" || disabled === "true") {
+    return false;
+  }
   return true;
 }
 

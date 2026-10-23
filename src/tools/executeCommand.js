@@ -15,6 +15,7 @@ import {
   isApprovalRequired,
   verifyActionApproval,
 } from "../services/approval.js";
+import { describeScript } from "./browser.js";
 import { createToolContext, wrapToolHandler } from "./context.js";
 
 /**
@@ -322,7 +323,7 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
           .string()
           .optional()
           .describe(
-            "The executable binary name from the permitted allowlist (e.g. 'npm', 'git', 'node').",
+            "The executable binary or command name to execute (e.g. 'npm', 'git', 'node', 'python', 'cargo').",
           ),
         args: z
           .array(z.string())
@@ -367,7 +368,9 @@ export function registerExecuteCommandTool(serverOrCtx, project) {
       // Validate binary allowlist, arguments, and path boundaries
       validateExecution(binary, args, cwd, ctx.project);
 
-      const commandDisplay = `${binary} ${args.join(" ")}`.trim();
+      const scriptBody = describeScript(cwd, binary, args);
+      const scriptText = scriptBody ? ` (runs: ${scriptBody})` : "";
+      const commandDisplay = `${binary} ${args.join(" ")}${scriptText}`.trim();
       const timeout = Math.min(
         Math.max(toolArgs?.timeoutMs || 30000, 1000),
         60000,

@@ -10,7 +10,7 @@ import { getCredential, setCredential, isSensitiveKey } from "./credentials.js";
  */
 export function getEnv(name, fallback = "") {
   const envValue = process.env[name];
-  if (envValue !== undefined && envValue !== null && String(envValue).trim() !== "") {
+  if (envValue != null && String(envValue).trim() !== "") {
     return String(envValue).trim();
   }
 

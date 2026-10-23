@@ -1,71 +1,56 @@
 {
-  "name": "@mahesh2-lab/codemcp",
-  "version": "2.1.0",
-  "description": "Project-scoped MCP server providing context, file access, and execution tools for AI assistants and MCP clients",
-  "homepage": "https://code-mcp.vercel.app/",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/mahesh2-lab/CodeMCP.git"
-  },
-  "bugs": {
-    "url": "https://github.com/mahesh2-lab/CodeMCP/issues"
-  },
-  "main": "dist/cli.js",
+  "name": "codemcp",
+  "displayName": "codemcp",
+  "description": "its a interface that connect local codebase to web llms",
+  "version": "0.0.1",
   "type": "module",
-  "bin": {
-    "codemcp": "dist/cli.js",
-    "coduit": "dist/cli.js",
-    "devnet-mcp": "dist/cli.js"
-  },
-  "files": [
-    "dist",
-    "assets",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "start": "node dist/cli.js",
-    "dev": "node --watch bin/cli.js",
-    "test": "node --test tests/**/*.test.js",
-    "test:integration": "node scripts/test-client.js",
-    "compile": "node scripts/build.js",
-    "build": "node scripts/build.js",
-    "prepublishOnly": "npm run build"
-  },
   "engines": {
-    "node": ">=18.0.0"
+    "vscode": "^1.140.0"
   },
-  "keywords": [
-    "codemcp",
-    "mcp",
-    "model-context-protocol",
-    "ai-assistant",
-    "agent",
-    "llm",
-    "code-review",
-    "developer-tools"
+  "categories": [
+    "Other"
   ],
-  "author": "",
-  "license": "MIT",
-  "publishConfig": {
-    "access": "public"
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codemcp.helloWorld",
+        "title": "Hello World"
+      }
+    ]
   },
-  "dependencies": {
-    "@clack/prompts": "^1.8.0",
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "@ngrok/ngrok": "^1.7.0",
-    "@vscode/ripgrep": "^1.18.0",
-    "commander": "^15.0.0",
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "picocolors": "^1.1.1",
-    "playwright-core": "^1.50.0",
-    "zod": "^4.6.2"
-  },
-  "overrides": {
-    "qs": "^6.16.0"
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/vscode": "^1.140.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "eslint": "^10.5.0",
+    "ts-loader": "^9.6.2",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1",
+    "webpack": "^5.107.2",
+    "webpack-cli": "^7.0.3"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.1",
+    "@ngrok/ngrok": "^1.7.0",
+    "@vscode/ripgrep": "^1.18.0"
   }
 }

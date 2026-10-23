@@ -265,39 +265,35 @@ export async function getOrCreateDomain(options = "codemcp-agent") {
 }
 
 /**
- * Stops all remote ngrok tunnel sessions and endpoints via the ngrok API.
+ * Safely stops remote ngrok endpoints matching CodeMCP's domain or description.
+ * Never touches unrelated tunnel sessions or endpoints on the user's ngrok account.
  *
  * @param {string} apiKey
+ * @param {string} [targetDomain]
  */
-export async function closeRemoteNgrokSessions(apiKey) {
+export async function closeRemoteNgrokSessions(apiKey, targetDomain = null) {
   if (!apiKey) return;
   const headers = getHeaders(apiKey);
-
-  try {
-    const res = await fetch("https://api.ngrok.com/tunnel_sessions", { headers });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data?.tunnel_sessions) && data.tunnel_sessions.length > 0) {
-        await Promise.allSettled(
-          data.tunnel_sessions.map((session) =>
-            fetch(`https://api.ngrok.com/tunnel_sessions/${session.id}/stop`, {
-              method: "POST",
-              headers,
-              body: JSON.stringify({}),
-            }),
-          ),
-        );
-      }
-    }
-  } catch {}
+  const domain = targetDomain || getEnv("NGROK_DOMAIN");
 
   try {
     const res = await fetch("https://api.ngrok.com/endpoints", { headers });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data?.endpoints) && data.endpoints.length > 0) {
+        // Filter strictly to endpoints owned by this CodeMCP domain or description
+        const matchingEndpoints = data.endpoints.filter((ep) => {
+          if (domain && ep.hostport && ep.hostport.startsWith(domain)) {
+            return true;
+          }
+          if (typeof ep.description === "string" && ep.description.includes("codemcp")) {
+            return true;
+          }
+          return false;
+        });
+
         await Promise.allSettled(
-          data.endpoints.map((ep) =>
+          matchingEndpoints.map((ep) =>
             fetch(`https://api.ngrok.com/endpoints/${ep.id}`, {
               method: "DELETE",
               headers,
@@ -310,8 +306,8 @@ export async function closeRemoteNgrokSessions(apiKey) {
 }
 
 /**
- * Kills active ngrok sessions and terminates orphaned external processes
- * holding the ngrok tunnel or domain, and closes remote ngrok sessions via API.
+ * Disconnects in-process ngrok sessions and safely clears matching CodeMCP endpoints.
+ * Never terminates arbitrary external processes or unrelated user services.
  *
  * @param {string} [apiKey]
  */
@@ -324,27 +320,7 @@ export async function killExistingTunnels(apiKey = null) {
     if (typeof ngrok.kill === "function") await ngrok.kill();
   } catch {}
 
-  // 2. Terminate orphan external processes (codemcp / ngrok) holding the endpoint
-  const currentPid = process.pid;
-  try {
-    if (process.platform === "win32") {
-      execSync(
-        `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process | Where-Object { ($_.CommandLine -match 'codemcp|coduit|devnet-mcp' -or $_.Name -match '^ngrok(\\.exe)?$') -and $_.ProcessId -ne ${currentPid} } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"`,
-        { stdio: "ignore", timeout: 5000 },
-      );
-    } else {
-      execSync(`pkill -f '(codemcp|coduit|devnet-mcp)' -9 || true`, {
-        stdio: "ignore",
-        timeout: 5000,
-      });
-      execSync(`pkill -x 'ngrok' -9 || true`, {
-        stdio: "ignore",
-        timeout: 5000,
-      });
-    }
-  } catch {}
-
-  // 3. Stop remote ngrok tunnel sessions & endpoints via API
+  // 2. Safely close only matching CodeMCP endpoints via API if configured
   const key = apiKey || cachedApiKey || getEnv("NGROK_API_KEY");
   if (key) {
     await closeRemoteNgrokSessions(key);

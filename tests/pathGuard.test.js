@@ -108,13 +108,34 @@ test("PathGuard - walk skips ignored directories like .git and node_modules", ()
   );
 });
 
-test("PathGuard - isProtectedFromDeletion protects core configuration files", () => {
+test("PathGuard - isProtectedFromDeletion protects core configuration files and CONTEXT.md", () => {
   const root = getProjectRoot();
   const guard = createScopedPathGuard(root);
   assert.equal(guard.isProtectedFromDeletion("codemcp.json"), true);
   assert.equal(guard.isProtectedFromDeletion("codemcp.config.json"), true);
+  assert.equal(guard.isProtectedFromDeletion("CONTEXT.md"), true);
+  assert.equal(guard.isProtectedFromDeletion(path.join(root, "CONTEXT.md")), true);
   assert.equal(guard.isProtectedFromDeletion(path.join(root, "codemcp.json")), true);
   assert.equal(guard.isProtectedFromDeletion("src/index.js"), false);
+});
+
+test("PathGuard - isIgnored blocks cloud credentials (.aws, .docker, .kube, .netrc)", () => {
+  const root = getProjectRoot();
+  const guard = createScopedPathGuard(root);
+  assert.equal(guard.isIgnored(path.join(root, ".aws", "credentials")), true);
+  assert.equal(guard.isIgnored(path.join(root, ".docker", "config.json")), true);
+  assert.equal(guard.isIgnored(path.join(root, ".kube", "config")), true);
+  assert.equal(guard.isIgnored(path.join(root, ".netrc")), true);
+  assert.equal(guard.isIgnored(path.join(root, "src", "app.js")), false);
+});
+
+test("PathGuard - isIgnored supports wildcard patterns like *.pem and *.log", () => {
+  const root = getProjectRoot();
+  const patterns = new Set(["*.pem", "*.secret.key", "logs/*"]);
+  assert.equal(isIgnored(path.join(root, "server.pem"), root, patterns), true);
+  assert.equal(isIgnored(path.join(root, "cert.pem"), root, patterns), true);
+  assert.equal(isIgnored(path.join(root, "my.secret.key"), root, patterns), true);
+  assert.equal(isIgnored(path.join(root, "normal.js"), root, patterns), false);
 });
 
 

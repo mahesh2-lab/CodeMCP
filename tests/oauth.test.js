@@ -12,10 +12,14 @@ import {
   verifyPkce,
   generateAccessToken,
   verifyAccessToken,
+  revokeAccessToken,
+  isTokenRevoked,
+  getOwnerPassword,
   base64UrlEncode,
   base64UrlDecode,
   TOKEN_EXPIRY_SECONDS,
 } from "../src/services/oauth.js";
+import { ownerPasswordFailureTracker } from "../src/middleware/rateLimit.js";
 import { renderAuthorizeHtml, escapeHtml } from "../src/views/oauthConsent.js";
 
 test("OAuth Services - base64Url encoding and decoding roundtrip", () => {
@@ -341,6 +345,133 @@ test("OAuth End-to-End - Full flow: DCR -> Authorize -> Token -> Protected /mcp"
     assert.equal(mcpData.user.client_id, clientId);
     assert.equal(mcpData.user.sub, "owner");
   } finally {
+    if (origPassword !== undefined) {
+      process.env.OWNER_PASSWORD = origPassword;
+    } else {
+      delete process.env.OWNER_PASSWORD;
+    }
+    server.close();
+  }
+});
+
+test("OAuth Hardening - Auto-generated password provides 128-bit entropy (32 hex chars)", () => {
+  const orig = process.env.OWNER_PASSWORD;
+  delete process.env.OWNER_PASSWORD;
+  try {
+    const password = getOwnerPassword();
+    assert.ok(typeof password === "string");
+    assert.ok(password.length >= 32, "Auto-generated password must be at least 32 characters (128 bits)");
+    assert.match(password, /^[0-9a-f]{32,}$/i, "Password must be hexadecimal");
+  } finally {
+    if (orig !== undefined) process.env.OWNER_PASSWORD = orig;
+  }
+});
+
+test("OAuth Hardening - Token revocation via RFC 7009 POST /revoke and verification", async () => {
+  const app = express();
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use(oauthRouter);
+  app.get("/protected", requireAuth, (req, res) => res.json({ ok: true }));
+
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, () => resolve(s));
+  });
+  const port = server.address().port;
+  const baseUrl = `http://localhost:${port}`;
+
+  try {
+    const token = generateAccessToken({
+      clientId: "revocation-test-client",
+      baseUrl,
+    });
+
+    const beforeRevoke = verifyAccessToken(token);
+    assert.equal(beforeRevoke.valid, true);
+
+    // Revoke token via POST /revoke
+    const revokeRes = await fetch(`${baseUrl}/revoke`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    assert.equal(revokeRes.status, 200);
+    const revokeData = await revokeRes.json();
+    assert.equal(revokeData.status, "revoked");
+
+    // Verification must now fail
+    const afterRevoke = verifyAccessToken(token);
+    assert.equal(afterRevoke.valid, false);
+    assert.equal(afterRevoke.error, "Token has been revoked");
+
+    // Protected route must reject revoked token with 401
+    const accessRes = await fetch(`${baseUrl}/protected`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert.equal(accessRes.status, 401);
+  } finally {
+    server.close();
+  }
+});
+
+test("OAuth Hardening - Brute force protection locks out repeated failed password attempts", async () => {
+  ownerPasswordFailureTracker.reset();
+
+  const app = express();
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use(oauthRouter);
+
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, () => resolve(s));
+  });
+  const port = server.address().port;
+  const baseUrl = `http://localhost:${port}`;
+
+  const origPassword = process.env.OWNER_PASSWORD;
+  process.env.OWNER_PASSWORD = "super-secret-target-password";
+
+  try {
+    const client = registerClient({
+      client_name: "Lockout Test Client",
+      redirect_uris: ["https://example.com/cb"],
+    });
+
+    // Send 5 incorrect password attempts
+    for (let i = 0; i < 5; i++) {
+      const res = await fetch(`${baseUrl}/authorize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: client.client_id,
+          redirect_uri: client.redirect_uris[0],
+          code_challenge: "challenge-test",
+          code_challenge_method: "S256",
+          password: `wrong-pass-${i}`,
+        }).toString(),
+      });
+      assert.equal(res.status, 401);
+    }
+
+    // 6th attempt must be blocked with HTTP 429 Too Many Requests
+    const blockedRes = await fetch(`${baseUrl}/authorize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: client.client_id,
+        redirect_uri: client.redirect_uris[0],
+        code_challenge: "challenge-test",
+        code_challenge_method: "S256",
+        password: "super-secret-target-password", // Even with the right password, client is locked out
+      }).toString(),
+    });
+
+    assert.equal(blockedRes.status, 429);
+    assert.ok(blockedRes.headers.get("retry-after"));
+    const html = await blockedRes.text();
+    assert.ok(html.includes("temporarily locked out"));
+  } finally {
+    ownerPasswordFailureTracker.reset();
     if (origPassword !== undefined) {
       process.env.OWNER_PASSWORD = origPassword;
     } else {

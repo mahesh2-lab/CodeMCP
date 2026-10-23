@@ -52,7 +52,7 @@ export function assertBrowserCommand(binary, args) {
 }
 
 /** Returns the shell body of the package.json script that will run, so the approval prompt shows what really executes. */
-function describeScript(cwd, binary, args) {
+export function describeScript(cwd, binary, args) {
   try {
     if (!PKG_MANAGERS.has(baseBinary(binary))) return "";
     const name = args[0] === "run" || args[0] === "run-script" ? args[1] : args[0];
@@ -130,7 +130,7 @@ async function buildResult(
 
 function need(args, field, action) {
   const value = args?.[field];
-  if (value === undefined || value === null || value === "") {
+  if (value == null || value === "") {
     throw new PathGuardError(`'${field}' is required for action "${action}"`, 400);
   }
   return value;

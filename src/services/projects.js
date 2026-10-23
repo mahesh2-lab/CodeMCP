@@ -100,7 +100,7 @@ export function getActiveProject() {
   return activeProject;
 }
 
-function setActiveProject(project) {
+export function setActiveProject(project) {
   activeProject = project;
 }
 

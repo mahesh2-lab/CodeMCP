@@ -67,21 +67,25 @@ export function registerWriteFileTool(serverOrCtx, project) {
         }
       }
 
-      if (isApprovalRequired(ctx.project, "WRITE")) {
+      const isProtected = guard.isProtectedFromDeletion(absolutePath);
+
+      if (isProtected || isApprovalRequired(ctx.project, "WRITE")) {
         logger.toolWritePending(normalized);
-      }
+        const approvalResult = await verifyActionApproval({
+          project: ctx.project,
+          actionType: "WRITE",
+          path: normalized,
+          oldContent,
+          newContent: content,
+          summary: isProtected
+            ? `${args?.summary || ""} [Protected Core File: CONTEXT/Config]`.trim()
+            : args?.summary,
+          logger,
+        });
 
-      const approvalResult = await verifyActionApproval({
-        project: ctx.project,
-        actionType: "WRITE",
-        path: normalized,
-        oldContent,
-        newContent: content,
-        logger,
-      });
-
-      if (!approvalResult.approved) {
-        return approvalResult.rejectionResponse;
+        if (!approvalResult.approved) {
+          return approvalResult.rejectionResponse;
+        }
       }
 
       const dir = path.dirname(absolutePath);

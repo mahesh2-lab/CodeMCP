@@ -3,7 +3,7 @@ import pc from "picocolors";
 const ANSI_REGEX = /[\u001b\x1b]\[[0-9;]*[a-zA-Z]/g;
 
 export function stripAnsi(str) {
-  return str.replace(ANSI_REGEX, "");
+  return String(str || "").replace(ANSI_REGEX, "");
 }
 
 /**

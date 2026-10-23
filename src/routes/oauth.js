@@ -8,8 +8,15 @@ import {
   createAuthCode,
   consumeAuthCode,
   generateAccessToken,
+  revokeAccessToken,
   TOKEN_EXPIRY_SECONDS,
 } from "../services/oauth.js";
+import {
+  authorizeRateLimiter,
+  tokenRateLimiter,
+  registerRateLimiter,
+  ownerPasswordFailureTracker,
+} from "../middleware/rateLimit.js";
 import { getActiveProject } from "../services/projects.js";
 import { logger } from "../utils/logger.js";
 
@@ -34,11 +41,13 @@ router.get("/.well-known/oauth-authorization-server", (req, res) => {
     authorization_endpoint: `${baseUrl}/authorize`,
     token_endpoint: `${baseUrl}/token`,
     registration_endpoint: `${baseUrl}/register`,
+    revocation_endpoint: `${baseUrl}/revoke`,
     response_types_supported: ["code"],
     response_modes_supported: ["query"],
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
+    revocation_endpoint_auth_methods_supported: ["none"],
     scopes_supported: ["mcp"],
   });
 });
@@ -60,7 +69,7 @@ router.get("/.well-known/oauth-protected-resource", (req, res) => {
 /**
  * RFC 7591 - Dynamic Client Registration
  */
-router.post("/register", (req, res) => {
+router.post("/register", registerRateLimiter, (req, res) => {
   try {
     const client = registerClient(req.body);
     logger.serverInfo(
@@ -137,7 +146,7 @@ router.get("/authorize", (req, res) => {
 /**
  * POST /authorize - Validates owner password, generates auth code, redirects to redirect_uri
  */
-router.post("/authorize", (req, res) => {
+router.post("/authorize", authorizeRateLimiter, (req, res) => {
   const {
     client_id,
     redirect_uri,
@@ -157,8 +166,31 @@ router.post("/authorize", (req, res) => {
     return res.status(400).send("Invalid PKCE challenge or method.");
   }
 
+  // Brute-force protection: check if client IP is currently locked out
+  const blockCheck = ownerPasswordFailureTracker.isBlocked(req);
+  if (blockCheck.blocked) {
+    const project = getActiveProject();
+    const html = renderAuthorizeHtml({
+      projectName: project?.name || "CodeMCP Project",
+      clientName: client.client_name,
+      clientId: client_id,
+      redirectUri: redirect_uri,
+      codeChallenge: code_challenge,
+      codeChallengeMethod: code_challenge_method,
+      state,
+      scope,
+      errorMessage: `Too many failed login attempts. This client is temporarily locked out. Please retry after ${blockCheck.retryAfter} seconds.`,
+    });
+
+    res.status(429);
+    res.setHeader("Retry-After", String(blockCheck.retryAfter));
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(html);
+  }
+
   const isPasswordValid = verifyOwnerPassword(password);
   if (!isPasswordValid) {
+    ownerPasswordFailureTracker.recordFailure(req);
     const project = getActiveProject();
     const html = renderAuthorizeHtml({
       projectName: project?.name || "CodeMCP Project",
@@ -176,6 +208,9 @@ router.post("/authorize", (req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.send(html);
   }
+
+  // Password valid: clear failure counter for this IP
+  ownerPasswordFailureTracker.recordSuccess(req);
 
   const code = createAuthCode({
     clientId: client_id,
@@ -201,7 +236,7 @@ router.post("/authorize", (req, res) => {
 /**
  * POST /token - Exchanges authorization code + PKCE verifier for JWT access token
  */
-router.post("/token", (req, res) => {
+router.post("/token", tokenRateLimiter, (req, res) => {
   const { grant_type, code, redirect_uri, client_id, code_verifier } = req.body;
 
   if (grant_type !== "authorization_code") {
@@ -242,6 +277,27 @@ router.post("/token", (req, res) => {
     expires_in: TOKEN_EXPIRY_SECONDS,
     scope: verification.record.scope || "mcp",
   });
+});
+
+/**
+ * POST /revoke - Revokes an access token (RFC 7009)
+ */
+router.post("/revoke", tokenRateLimiter, (req, res) => {
+  const { token } = req.body;
+
+  if (!token || typeof token !== "string") {
+    return res.status(400).json({
+      error: "invalid_request",
+      error_description: "Missing 'token' parameter",
+    });
+  }
+
+  revokeAccessToken(token);
+  logger.serverInfo?.("OAuth access token revoked");
+
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Pragma", "no-cache");
+  return res.status(200).json({ status: "revoked" });
 });
 
 export default router;

@@ -29,10 +29,11 @@ test("Telemetry - getStatsBaseUrl respects configuration", () => {
   assert.equal(defaultUrl.endsWith("/"), false);
 });
 
-test("Telemetry - isTelemetryEnabled always returns true", () => {
+test("Telemetry - isTelemetryEnabled respects DO_NOT_TRACK and defaults to true", () => {
+  delete process.env.DO_NOT_TRACK;
   assert.equal(isTelemetryEnabled(), true);
   process.env.DO_NOT_TRACK = "1";
-  assert.equal(isTelemetryEnabled(), true);
+  assert.equal(isTelemetryEnabled(), false);
   delete process.env.DO_NOT_TRACK;
 });
 

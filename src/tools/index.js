@@ -72,8 +72,7 @@ export function registerTools(server, project) {
         async (request, extra) => {
           if (
             request?.params &&
-            (request.params.arguments === undefined ||
-              request.params.arguments === null ||
+            (request.params.arguments == null ||
               typeof request.params.arguments !== "object" ||
               Array.isArray(request.params.arguments))
           ) {

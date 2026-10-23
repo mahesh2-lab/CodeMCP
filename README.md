@@ -1,199 +1,196 @@
-# @mahesh2-lab/codemcp
+# CodeMCP
 
-> **The Project-Scoped Model Context Protocol Server for Local Codebases**
+> **The Modern CLI for Project-Scoped AI Context & Tools**
 
-[![npm version](https://img.shields.io/npm/v/@mahesh2-lab/codemcp?style=flat-square&color=black&labelColor=222)](https://www.npmjs.com/package/@mahesh2-lab/codemcp)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow?style=flat-square&labelColor=222)](LICENSE)
-[![Protocol](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-6366f1?style=flat-square&labelColor=222)](https://modelcontextprotocol.io/)
+[![Node Version](https://img.shields.io/badge/node-%3E%3D20.0.0-green?style=flat-square&labelColor=222)](https://nodejs.org/)
+[![Documentation](https://img.shields.io/badge/docs-codemcp.heymahesh.in%2Fdocs-6366f1?style=flat-square&labelColor=222)](https://codemcp.heymahesh.in/docs)
 
-CodeMCP connects AI assistants (Claude, Cursor, Windsurf, etc.) to your local project codebase through authenticated Streamable HTTP with sandboxed tools, interactive terminal approvals, and cross-session memory.
+CodeMCP is a developer CLI tool that exposes your local codebase to AI assistants with zero manual configuration. It manages project indexing, safe file operations with interactive terminal approvals, background daemon processes, secure local tunneling, and encrypted machine-level credential storage.
+
+📖 **For full documentation and client connection guides, visit:**  
+**[https://codemcp.heymahesh.in/docs](https://codemcp.heymahesh.in/docs)**
 
 ---
 
-## Quick Start
+## Installation
 
-Run directly inside any project folder using `npx` (no installation required):
-
+Run instantly without installation:
 ```bash
-# Start with a secure public HTTPS tunnel (for remote AI clients like Claude)
 npx @mahesh2-lab/codemcp
-
-# Or start for local-only access (for local AI clients like Cursor / Claude Desktop)
-npx @mahesh2-lab/codemcp --no-tunnel
 ```
 
-When started, CodeMCP will automatically:
-
-1. Detect or initialize project metadata (`codemcp.json`, `.mcpignore`, `CONTEXT.md`).
-2. Display your **Local URL**, **Global URL** (if tunneled), and a secure **Owner Password**.
-3. Listen for incoming MCP tool requests.
+Or install globally:
+```bash
+npm install -g @mahesh2-lab/codemcp
+# or
+pnpm add -g @mahesh2-lab/codemcp
+```
 
 ---
 
-## Global Installation
-
-If you prefer to install CodeMCP globally:
+## Quick Usage
 
 ```bash
-npm install --global @mahesh2-lab/codemcp
-```
-
-Then run it from anywhere:
-
-```bash
-# In the current directory:
+# Serve current folder in foreground
 codemcp
 
-# Or specify a target directory:
-codemcp ./path/to/project --no-tunnel
+# Run in background (detached daemon mode, like docker run -d)
+codemcp -d
+
+# Inspect active session, URLs, and owner password
+codemcp info -s
+
+# View output logs of background daemon
+codemcp logs
+
+# Stop the running background daemon
+codemcp stop
 ```
 
 ---
 
-## Connecting to Your AI Client
+## CLI Commands
 
-### 1. Claude Desktop
-
-Add CodeMCP to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "my-project": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@mahesh2-lab/codemcp",
-        "--no-tunnel",
-        "/absolute/path/to/project"
-      ]
-    }
-  }
-}
-```
-
-### 2. Claude Code, Cursor, Windsurf & Remote Clients
-
-1. Run CodeMCP in your terminal:
-   ```bash
-   codemcp
-   ```
-2. Copy the **Global URL** (e.g., `https://your-domain.ngrok-free.app/mcp`) or **Local URL** (`http://localhost:4173/mcp`).
-3. Add it as an HTTP MCP Server in your client settings.
-4. When your client prompts for authentication, open the URL and enter the **Owner Password** displayed in the CodeMCP terminal.
+| Command | Description |
+| :--- | :--- |
+| `codemcp [path]` | Start the server for current directory or `[path]` (default) |
+| `codemcp start [path]` | Explicitly start server with custom flags |
+| `codemcp stop [path]` | Terminate the active background daemon |
+| `codemcp logs [path]` | View recent output logs from background server |
+| `codemcp info [path]` | Display indexed files, project metadata, and session status |
+| `codemcp approval [on\|off]` | View or permanently toggle interactive change approvals |
+| `codemcp credentials <action>` | Manage encrypted machine vault tokens (`status`, `set`, `del`, `clear`) |
+| `codemcp init [path]` | Interactive setup to create `codemcp.json` and `CONTEXT.md` |
 
 ---
 
-## Interactive Approvals
+## Command Reference & Examples
 
-By default, CodeMCP protects your codebase by asking for confirmation in the terminal before making changes:
-
-```text
-┌─ Action Approval Required ───────────────────────────────────────┐
-│ Action    : WRITE                                                │
-│ Target    : src/index.js                                         │
-│ Summary   : Add error handling for API requests                  │
-├──────────────────────────────────────────────────────────────────┤
---- old
-+++ new
-@@ -1,3 +1,5 @@
-+try {
-   fetchData();
-+} catch (err) { console.error(err); }
-└──────────────────────────────────────────────────────────────────┘
-
-Approve this action?
- [y] Allow once      [a] Always allow for session
- [n] Reject          [d] View full diff       [q] Cancel
-```
-
-### Approval Shortcuts
-
-|   Key   | Action                                                                                       |
-| :-----: | :------------------------------------------------------------------------------------------- |
-| **`y`** | **Allow once**: Approves this single operation.                                              |
-| **`a`** | **Always allow**: Approves this operation and all future operations for the current session. |
-| **`n`** | **Reject**: Blocks the operation with a rejection message returned to the AI.                |
-| **`d`** | **View full diff**: Expands the entire unified diff.                                         |
-| **`q`** | **Cancel**: Aborts the operation immediately.                                                |
-
-To disable approval prompts completely:
+### 1. Starting the Server
 
 ```bash
-codemcp --no-approval
-# Or persist in configuration:
+# Start current directory with default settings (port 4173 + HTTPS tunnel)
+codemcp
+
+# Target a specific project path
+codemcp ./my-project
+
+# Run locally without public ngrok tunnel (localhost only)
+codemcp --no-tunnel
+
+# Specify a custom listening port
+codemcp -p 5000
+
+# Require terminal confirmation before any files are modified
+codemcp -a
+# or use aliases
+codemcp --ask
+codemcp -c
+```
+
+### 2. Detached Mode (Background Daemon)
+
+Run CodeMCP as a background service without keeping a terminal tab open:
+
+```bash
+# Launch server in background
+codemcp -d
+
+# Tail background server logs (defaults to 50 lines)
+codemcp logs
+
+# Tail specific number of log lines
+codemcp logs -n 100
+
+# Stop the background process cleanly
+codemcp stop
+```
+
+### 3. Session & Project Inspection (`info`)
+
+```bash
+# View project metadata, configuration file, and indexed source files
+codemcp info
+
+# View active session, local/global URLs, daemon status, and owner password
+codemcp info -s
+# or
+codemcp info session
+
+# Output only the raw owner authentication password (useful for scripting)
+codemcp info -p
+
+# Display both project overview and session information
+codemcp info -a
+```
+
+### 4. Interactive Change Approvals (`approval`)
+
+Enforce human-in-the-loop confirmation before files are written or commands are executed:
+
+```bash
+# Check current approval status in codemcp.json
+codemcp approval
+
+# Enable interactive terminal diff review before file modifications
+codemcp approval on
+
+# Disable approval prompts and auto-apply modifications
 codemcp approval off
 ```
 
-To require approval only for deletions and commands:
+### 5. Encrypted Credential Vault (`credentials`)
+
+Store sensitive API tokens (such as `NGROK_AUTHTOKEN`, `NGROK_API_KEY`, or custom keys) in a machine-bound encrypted vault outside your git repositories (`~/.codemcp/credentials.enc`):
 
 ```bash
-codemcp --approval destructive
+# Check stored credentials with values masked
+codemcp credentials status
+
+# Save an API token to the secure vault
+codemcp credentials set NGROK_AUTHTOKEN <your-token>
+codemcp credentials set NGROK_API_KEY <your-api-key>
+
+# Delete a credential from the vault
+codemcp credentials del NGROK_AUTHTOKEN
+
+# Clear all stored credentials
+codemcp credentials clear
 ```
 
 ---
 
-## Common CLI Commands & Options
+## CLI Options & Flags
 
-### Commands
-
-| Command                               | Description                                                                 |
-| :------------------------------------ | :-------------------------------------------------------------------------- |
-| `codemcp [path]`                      | Start the MCP server for the given project (defaults to current directory). |
-| `codemcp init [path]`                 | Create or update `codemcp.json`, `.mcpignore`, and `CONTEXT.md`.            |
-| `codemcp info [path]`                 | Display project permissions, status, and indexed file count.                |
-| `codemcp approval <on\|off>`          | Turn approval prompts on or off in `codemcp.json`.                          |
-| `codemcp credentials status`          | Inspect stored encrypted credentials.                                       |
-| `codemcp credentials set <key> <val>` | Store credentials securely (e.g. `NGROK_API_KEY`).                          |
-
-### Options
-
-| Flag                    | Description                                                       | Default     |
-| :---------------------- | :---------------------------------------------------------------- | :---------- |
-| `-p, --port <number>`   | Port to listen on (auto-detects next free port if busy)           | `4173`      |
-| `--no-tunnel`           | Run locally without creating an ngrok tunnel                      | Tunneled    |
-| `-a, --approval <mode>` | Approval mode: `true`/`always`, `destructive`, or `false`/`never` | `true`      |
-| `--no-approval`         | Disable all confirmation prompts (auto-apply changes)             | Prompting   |
-| `-y, --yes`             | Skip interactive setup prompts and accept defaults                | Interactive |
-| `-h, --help`            | Show CLI help                                                     |             |
+| Flag | Short | Description |
+| :--- | :--- | :--- |
+| `--detach` | `-d` | Run server in background daemon mode |
+| `--session` | `-s` | Show session URLs, daemon status, and password (with `info`) |
+| `--password` | `-p` | Print owner authentication password directly (with `info`) |
+| `--all` | `-a` | Show both project overview and session info (with `info`) |
+| `--port <number>` | `-p` | Set local HTTP port (default: `4173`) |
+| `--no-tunnel` | | Disable public HTTPS ngrok tunnel (localhost only) |
+| `--no-notify` | | Disable desktop OS notifications |
+| `--approval [mode]`| `-a` | Require confirmation before applying edits (`true`, `false`, `destructive`) |
+| `--ask` | | Alias for `--approval` |
+| `--confirm` | `-c` | Alias for `--approval` |
+| `--no-approval` | | Disable confirmation prompts and auto-apply edits |
+| `--lines <count>` | `-n` | Number of log lines to output (with `logs`, default: `50`) |
+| `--yes` | `-y` | Skip interactive prompts during `init` |
+| `--version` | `-V` | Output version number |
+| `--help` | `-h` | Display terminal help screen |
 
 ---
 
-## Configuration (`codemcp.json`)
+## Documentation
 
-CodeMCP reads `codemcp.json` in your project root:
+For AI client configuration guides (Claude Desktop, Cursor, Windsurf, Claude Code, Cline), protocol details, architecture, and security practices, refer to the official documentation:
 
-```json
-{
-  "id": "my-project",
-  "name": "My Project",
-  "description": "Project overview and guidelines for AI assistants.",
-  "permission": "both",
-  "approval": true,
-  "contextFile": "CONTEXT.md"
-}
-```
-
-- **`permission`**: `"both"` (read & write), `"read"` (read-only), or `"write"`.
-- **`approval`**: `true` (ask before changes), `false` (no prompt), or `"destructive"` (prompts only for deletes & shell commands).
-- **`contextFile`**: Markdown file injected into AI system instructions (defaults to `CONTEXT.md`).
+👉 **[https://codemcp.heymahesh.in/docs](https://codemcp.heymahesh.in/docs)**
 
 ---
 
-## Available Tools
+## License
 
-When connected, AI assistants can use these project-scoped tools:
-
-- **Read & Explore**: `list_files`, `find_file`, `read_file`, `search_code` (fast ripgrep search)
-- **Edit & Write**: `write_file`, `edit_file`, `delete_file`
-- **Execute**: `execute_command` (runs allowlisted dev binaries like `git`, `npm`, `node`, `pytest`, `cargo`, etc.)
-- **Context & Memory**: `get_project_context`, `record_memory`, `get_memory`, `finish`
-
----
-
-## Links & Resources
-
-- **Full Documentation & Source**: [github.com/mahesh2-lab/CodeMCP](https://github.com/mahesh2-lab/CodeMCP)
-- **Website**: [codemcp.heymahesh.in](https://codemcp.heymahesh.in/)
-- **Model Context Protocol**: [modelcontextprotocol.io](https://modelcontextprotocol.io/)
-- **License**: MIT
+[MIT](LICENSE) © [Mahesh](https://github.com/mahesh2-lab)

@@ -34,7 +34,7 @@ export function requireAuth(req, res, next) {
   }
 
   const token = match[1].trim();
-  const result = verifyAccessToken(token);
+  const result = verifyAccessToken(token, `${baseUrl}/mcp`);
 
   if (!result.valid) {
     res.setHeader(

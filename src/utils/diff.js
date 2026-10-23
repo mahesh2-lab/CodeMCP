@@ -1,9 +1,6 @@
 import pc from "picocolors";
 
-const ANSI_REGEX = /[\u001b\x1b]\[[0-9;]*[a-zA-Z]/g;
-export function stripAnsi(str) {
-  return String(str || "").replace(ANSI_REGEX, "");
-}
+export { stripAnsi } from "./box.js";
 
 /**
  * Computes line-by-line diff between two text strings using Longest Common Subsequence (LCS).

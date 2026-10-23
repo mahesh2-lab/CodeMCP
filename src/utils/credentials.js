@@ -37,16 +37,37 @@ function getMachineSecret() {
   return secret;
 }
 
+let cachedDerivedKey = null;
+let cachedVaultCreds = null;
+let cachedVaultMtime = 0;
+
 /**
  * Derives a consistent, machine-bound 256-bit encryption key.
+ * Caches the derived key in memory to prevent blocking the event loop on repeated calls.
  *
  * @param {string} [secretInput]
  * @returns {Buffer}
  */
 function deriveEncryptionKey(secretInput = null) {
+  if (!secretInput && cachedDerivedKey) {
+    return cachedDerivedKey;
+  }
   const secret = secretInput || getMachineSecret();
   const salt = Buffer.from("codemcp-secure-vault-salt-v1", "utf-8");
-  return crypto.pbkdf2Sync(secret, salt, 100000, 32, "sha256");
+  const key = crypto.pbkdf2Sync(secret, salt, 100000, 32, "sha256");
+  if (!secretInput) {
+    cachedDerivedKey = key;
+  }
+  return key;
+}
+
+/**
+ * Clears in-memory vault caches.
+ */
+export function clearVaultMemoryCache() {
+  cachedDerivedKey = null;
+  cachedVaultCreds = null;
+  cachedVaultMtime = 0;
 }
 
 /**
@@ -80,20 +101,30 @@ function tryDecrypt(payload, key) {
 
 /**
  * Reads and decrypts all credentials from ~/.codemcp/credentials.enc.
+ * Uses mtime-based memory caching for instant lookups without blocking PBKDF2.
  * Supports transparent migration from legacy fingerprint and hex-encoded keys.
  *
  * @returns {Record<string, string>}
  */
 export function getAllCredentials() {
   if (!fs.existsSync(VAULT_FILE)) {
+    cachedVaultCreds = {};
+    cachedVaultMtime = 0;
     return {};
   }
 
   try {
+    const stat = fs.statSync(VAULT_FILE);
+    if (cachedVaultCreds && cachedVaultMtime === stat.mtimeMs) {
+      return cachedVaultCreds;
+    }
+
     const raw = fs.readFileSync(VAULT_FILE, "utf-8");
     const payload = JSON.parse(raw);
 
     if (!payload.iv || !payload.authTag || !payload.ciphertext) {
+      cachedVaultCreds = {};
+      cachedVaultMtime = stat.mtimeMs;
       return {};
     }
 
@@ -103,7 +134,11 @@ export function getAllCredentials() {
     // 1. Primary: canonical machine secret key
     try {
       const creds = tryDecrypt(payload, canonicalKey);
-      if (creds && typeof creds === "object") return creds;
+      if (creds && typeof creds === "object") {
+        cachedVaultCreds = creds;
+        cachedVaultMtime = stat.mtimeMs;
+        return creds;
+      }
     } catch {}
 
     // 2. Fallback: key derived when 'codemcp-secure-vault-salt-v1' was mistakenly passed as secret
@@ -123,7 +158,6 @@ export function getAllCredentials() {
         const hexKey = crypto.pbkdf2Sync(hexSecret, salt, 100000, 32, "sha256");
         const creds = tryDecrypt(payload, hexKey);
         if (creds && typeof creds === "object") {
-          // Re-encrypt with canonical key so future reads are fast and standard
           saveAllCredentials(creds);
           return creds;
         }
@@ -150,6 +184,7 @@ export function getAllCredentials() {
     throw new Error("Unsupported state or unable to authenticate data");
   } catch (err) {
     console.warn(`[credentials] Warning: Could not read secure vault: ${err.message}`);
+    cachedVaultCreds = {};
     return {};
   }
 }
@@ -185,6 +220,13 @@ function saveAllCredentials(creds) {
     mode: 0o600,
   });
 
+  cachedVaultCreds = { ...creds };
+  try {
+    cachedVaultMtime = fs.statSync(VAULT_FILE).mtimeMs;
+  } catch {
+    cachedVaultMtime = Date.now();
+  }
+
   if (process.platform !== "win32") {
     try {
       fs.chmodSync(VAULT_FILE, 0o600);
@@ -202,7 +244,7 @@ function saveAllCredentials(creds) {
 export function getCredential(key, fallback = "") {
   const creds = getAllCredentials();
   const val = creds[key];
-  if (val === undefined || val === null || String(val).trim() === "") {
+  if (val == null || String(val).trim() === "") {
     return fallback;
   }
   return String(val).trim();

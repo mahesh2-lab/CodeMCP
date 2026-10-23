@@ -48,7 +48,11 @@ export function getIgnorePatterns(customRoot = getProjectRoot()) {
   return patterns;
 }
 
-export function isIgnored(targetPath, customRoot = getProjectRoot()) {
+export function isIgnored(
+  targetPath,
+  customRoot = getProjectRoot(),
+  preloadedPatterns = null,
+) {
   const normalized = toPosix(targetPath);
   const base = path.basename(targetPath);
 
@@ -58,10 +62,8 @@ export function isIgnored(targetPath, customRoot = getProjectRoot()) {
   )
     return true;
 
-  if (base === ".npmrc" || base === ".pypirc") return true;
-  if (/(^|\/)\.git(\/|$)/i.test(normalized)) return true;
-  if (/(^|\/)\.codemcp(\/|$)/i.test(normalized)) return true;
-  if (/(^|\/)\.ssh(\/|$)/i.test(normalized)) return true;
+  if (base === ".npmrc" || base === ".pypirc" || base === ".netrc") return true;
+  if (/(^|\/)\.(git|codemcp|ssh|aws|docker|kube)(\/|$)/i.test(normalized)) return true;
   if (
     /\b(id_rsa|id_dsa|id_ecdsa|id_ed25519|credentials\.enc)\b/i.test(normalized)
   )
@@ -70,7 +72,7 @@ export function isIgnored(targetPath, customRoot = getProjectRoot()) {
   const rel = toPosix(path.relative(customRoot, targetPath));
   const segments = rel.split("/").filter(Boolean);
 
-  const patterns = getIgnorePatterns(customRoot);
+  const patterns = preloadedPatterns || getIgnorePatterns(customRoot);
   for (const pattern of patterns) {
     const cleanPat = pattern.trim().replace(/\/$/, "");
     if (!cleanPat) continue;
@@ -79,13 +81,23 @@ export function isIgnored(targetPath, customRoot = getProjectRoot()) {
     if (cleanPat.endsWith("/*") && normalized.includes(cleanPat.slice(0, -2)))
       return true;
     if (rel === cleanPat || rel.startsWith(cleanPat + "/")) return true;
+
+    // Wildcard matching for patterns like *.pem, *.log, test-*
+    if (cleanPat.includes("*") || cleanPat.includes("?")) {
+      const regexStr = cleanPat
+        .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+        .replace(/\*/g, ".*")
+        .replace(/\?/g, ".");
+      const re = new RegExp(`^${regexStr}$`, "i");
+      if (re.test(base) || re.test(rel)) return true;
+    }
   }
   return false;
 }
 
 export function isProtectedFromDeletion(targetPath) {
   const normalized = toPosix(targetPath);
-  return /(^|\/)codemcp(?:\.[^/]+)?$/i.test(normalized);
+  return /(^|\/)(codemcp(?:\.[^/]+)?|CONTEXT\.md)$/i.test(normalized);
 }
 
 export function getAllowedExtensions() {
@@ -256,16 +268,18 @@ export function walk(
   dirRelative,
   results,
   customRoot = getProjectRoot(),
+  preloadedPatterns = null,
 ) {
+  const patterns = preloadedPatterns || getIgnorePatterns(customRoot);
   const entries = fs.readdirSync(dirAbsolute, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dirAbsolute, entry.name);
-    if (isIgnored(fullPath, customRoot)) continue;
+    if (isIgnored(fullPath, customRoot, patterns)) continue;
 
     const relPath = path.join(dirRelative, entry.name);
 
     if (entry.isDirectory()) {
-      walk(fullPath, relPath, results, customRoot);
+      walk(fullPath, relPath, results, customRoot, patterns);
     } else if (entry.isFile() && isAllowedFile(entry.name)) {
       results.push(toPosix(relPath));
     }
