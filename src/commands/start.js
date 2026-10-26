@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import pc from "picocolors";
 import { initProject } from "./init.js";
 import { startServer, handleShutdown } from "../server.js";
+import { checkAndUpdateProject } from "../utils/updater.js";
 import {
   getDaemonLogPath,
   saveDaemonState,
@@ -69,8 +70,10 @@ export async function startCommand(targetPath, options = {}) {
 
   process.env.PROJECT_ROOT = targetDir;
 
+  let didAutoInit = false;
   const configPath = path.join(targetDir, "codemcp.json");
   if (!fs.existsSync(configPath)) {
+    didAutoInit = true;
     console.log(
       pc.yellow(
         `No codemcp.json found in ${targetDir}. Initializing project...\n`,
@@ -145,6 +148,20 @@ export async function startCommand(targetPath, options = {}) {
       `\n  Run ${pc.cyan("codemcp logs")} to view output, or ${pc.cyan("codemcp stop")} to terminate.\n`,
     );
     process.exit(0);
+  }
+
+  // Existing interactive project: check for updates before starting the server
+  if (
+    !didAutoInit &&
+    !options.detach &&
+    process.env.CODEMCP_DAEMON !== "true" &&
+    process.stdin.isTTY
+  ) {
+    await checkAndUpdateProject({
+      ...options,
+      reRunCommand: "codemcp",
+      actionVerb: "server startup",
+    });
   }
 
   await startServer(options);

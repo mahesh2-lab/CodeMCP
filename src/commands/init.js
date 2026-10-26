@@ -26,7 +26,11 @@ export async function initProject(targetDir = process.cwd(), options = {}) {
 
   if (!isSilent) {
     p.intro(pc.bgCyan(pc.black(" CodeMCP - Project Init ")));
-    await checkAndUpdateProject(options);
+    await checkAndUpdateProject({
+      ...options,
+      reRunCommand: "codemcp init",
+      actionVerb: "project initialization",
+    });
   }
 
   const existingConfig = fs.existsSync(configJsonPath)

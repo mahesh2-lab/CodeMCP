@@ -120,6 +120,53 @@ export function getCachePath() {
 }
 
 /**
+ * Checks whether a specific package version has been snoozed by the user within the last 24 hours.
+ *
+ * @param {string} packageName
+ * @param {string} version
+ * @returns {boolean}
+ */
+export function isVersionSnoozed(packageName, version) {
+  try {
+    const cachePath = getCachePath();
+    if (!fs.existsSync(cachePath)) return false;
+    const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+    return (
+      cache.packageName === packageName &&
+      cache.snoozedVersion === version &&
+      Date.now() < (cache.snoozedUntil || 0)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Snoozes update prompts for a specific package version for 24 hours.
+ *
+ * @param {string} packageName
+ * @param {string} version
+ */
+export function snoozeVersion(packageName, version) {
+  try {
+    const cachePath = getCachePath();
+    const existing = fs.existsSync(cachePath)
+      ? JSON.parse(fs.readFileSync(cachePath, "utf8"))
+      : {};
+    fs.writeFileSync(
+      cachePath,
+      JSON.stringify({
+        ...existing,
+        packageName,
+        snoozedVersion: version,
+        snoozedUntil: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+      }),
+      "utf8",
+    );
+  } catch {}
+}
+
+/**
  * Fetches the latest published version from the npm registry, leveraging a 4-hour local cache.
  *
  * @param {string} packageName
@@ -265,8 +312,11 @@ export async function checkAndUpdateProject(options = {}) {
     return;
   }
 
+  const reRunCmd = options.reRunCommand || "codemcp init";
+  const actionVerb = options.actionVerb || "initialization";
+
   const pkg = getPackageInfo();
-  const currentVersion = process.env.MOCK_CURRENT_VERSION || pkg.version || "2.1.1";
+  const currentVersion = process.env.MOCK_CURRENT_VERSION || pkg.version || "2.1.2";
   const packageName = pkg.name || "@mahesh2-lab/codemcp";
 
   const latestVersion =
@@ -275,10 +325,19 @@ export async function checkAndUpdateProject(options = {}) {
     return;
   }
 
+  // Check if this specific version was snoozed within the last 24 hours
+  if (
+    process.env.FORCE_UPDATE_CHECK !== "true" &&
+    isVersionSnoozed(packageName, latestVersion)
+  ) {
+    return;
+  }
+
   // Handle ephemeral npx invocation
   if (process.env.FORCE_UPDATE_CHECK !== "true" && isNpxInvocation()) {
+    const npxTarget = reRunCmd === "codemcp" ? "" : " init";
     p.note(
-      `A new version of CodeMCP is available (${pc.dim("v" + currentVersion)} → ${pc.green("v" + latestVersion)}).\nRun with: ${pc.cyan(`npx ${packageName}@latest init`)}`,
+      `A new version of CodeMCP is available (${pc.dim("v" + currentVersion)} → ${pc.green("v" + latestVersion)}).\nRun with: ${pc.cyan(`npx ${packageName}@latest${npxTarget}`)}`,
       pc.yellow("Update Available"),
     );
     return;
@@ -291,12 +350,14 @@ export async function checkAndUpdateProject(options = {}) {
   });
 
   if (p.isCancel(shouldUpdate)) {
-    p.cancel("Initialization cancelled.");
+    p.cancel("Operation cancelled.");
     process.exit(0);
   }
 
   if (!shouldUpdate) {
-    return; // Proceed seamlessly to standard init
+    // Snooze notifications for this version for 24 hours to prevent prompt fatigue
+    snoozeVersion(packageName, latestVersion);
+    return; // Proceed seamlessly to standard init or server start
   }
 
   // Execute update
@@ -312,15 +373,15 @@ export async function checkAndUpdateProject(options = {}) {
         ? `sudo ${updateResult.cmd}`
         : updateResult.cmd;
     p.note(
-      `Could not update automatically. You can update manually:\n  ${pc.bold(pc.cyan(sudoHint))}\n\nContinuing initialization with current version (v${currentVersion})...`,
+      `Could not update automatically. You can update manually:\n  ${pc.bold(pc.cyan(sudoHint))}\n\nContinuing ${actionVerb} with current version (v${currentVersion})...`,
       pc.yellow("Update Notice"),
     );
-    return; // Never block user; proceed with init
+    return; // Never block user; proceed with init or server startup
   }
 
   s.stop(pc.green(`✔ CodeMCP updated successfully to v${latestVersion}!`));
 
-  // Invalidate local cache so next run fetches or operates on fresh state
+  // Invalidate local cache so next run operates on clean state
   try {
     const cachePath = getCachePath();
     if (fs.existsSync(cachePath)) {
@@ -329,7 +390,7 @@ export async function checkAndUpdateProject(options = {}) {
   } catch {}
 
   p.note(
-    `CodeMCP is now up-to-date.\nPlease re-run: ${pc.bold(pc.cyan("codemcp init"))}`,
+    `CodeMCP is now up-to-date.\nPlease re-run: ${pc.bold(pc.cyan(reRunCmd))}`,
     pc.green("Update Complete"),
   );
 
