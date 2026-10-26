@@ -84,6 +84,7 @@ export function getCustomHelpText(pkgVersion = defaultPkgVersion) {
   output.push(opt("-p, --port <number>", "Local port to listen on (default: 4173)"));
   output.push(opt("--no-tunnel", "Disable public ngrok tunnel (localhost only)"));
   output.push(opt("-y, --yes", "Skip interactive prompts during init"));
+  output.push(opt("--no-update-check", "Skip checking for updated versions on npm"));
   output.push(opt("-V, --version", "Output the version number"));
   output.push(opt("-h, --help", "Display this help message"));
 

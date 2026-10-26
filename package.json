@@ -2,7 +2,7 @@
   "name": "@mahesh2-lab/codemcp",
   "displayName": "codemcp",
   "description": "its a interface that connect local codebase to web llms",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "type": "module",
   "files": [
     "bin",
@@ -70,7 +70,13 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@ngrok/ngrok": "^1.7.0",
-    "@vscode/ripgrep": "^1.18.0"
+    "@vscode/ripgrep": "^1.18.0",
+    "commander": "^15.0.0",
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "picocolors": "^1.1.1",
+    "zod": "^4.6.7"
   }
 }
