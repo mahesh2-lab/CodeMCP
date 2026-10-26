@@ -10,6 +10,8 @@ import {
   getPackageRoot,
   isDevEnvironment,
   getCachePath,
+  isVersionSnoozed,
+  snoozeVersion,
 } from "../src/utils/updater.js";
 
 describe("Updater Utility Unit Tests", () => {
@@ -97,6 +99,25 @@ describe("Updater Utility Unit Tests", () => {
       const cachePath = getCachePath();
       assert.ok(cachePath.includes(".codemcp"), "Cache path should be inside .codemcp directory");
       assert.ok(cachePath.endsWith("update-cache.json"), "Cache filename should be update-cache.json");
+    });
+  });
+
+  describe("Version Snoozing Logic", () => {
+    test("snoozeVersion correctly snoozes a specific version for 24h", () => {
+      const testPkg = "@test-scope/codemcp-test";
+      const testVer = "9.9." + Date.now();
+
+      // Before snoozing: false
+      assert.equal(isVersionSnoozed(testPkg, testVer), false);
+
+      // Snooze it
+      snoozeVersion(testPkg, testVer);
+
+      // After snoozing: true
+      assert.equal(isVersionSnoozed(testPkg, testVer), true);
+
+      // A different newer version is NOT snoozed: false
+      assert.equal(isVersionSnoozed(testPkg, testVer + ".1"), false);
     });
   });
 });
