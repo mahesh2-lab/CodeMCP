@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { checkAndUpdateProject } from "../utils/updater.js";
 
 const CONTEXT_HEADER = "<!-- This file provides AI context and guidelines for this project. -->";
 
@@ -25,6 +26,7 @@ export async function initProject(targetDir = process.cwd(), options = {}) {
 
   if (!isSilent) {
     p.intro(pc.bgCyan(pc.black(" CodeMCP - Project Init ")));
+    await checkAndUpdateProject(options);
   }
 
   const existingConfig = fs.existsSync(configJsonPath)

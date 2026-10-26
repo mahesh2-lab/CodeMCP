@@ -26,7 +26,7 @@ export { startServer, app };
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
 
-let pkgVersion = "1.1.2";
+let pkgVersion = "2.1.2";
 try {
   const pkg = JSON.parse(
     fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"),
@@ -69,6 +69,7 @@ program
     "Disable confirmation prompts and auto-apply modifications",
   )
   .option("--no-confirm", "Alias for --no-approval")
+  .option("--no-update-check", "Skip checking for updated versions on npm")
   .action(async (targetPath, options) => {
     await startCommand(targetPath, options);
   });
@@ -95,6 +96,7 @@ program
   .command("init [path]")
   .description("Interactive setup to create codemcp.json in the project folder")
   .option("-y, --yes", "Skip interactive prompts and use detected defaults")
+  .option("--no-update-check", "Skip checking for updated versions on npm")
   .action(async (targetPath, options) => {
     try {
       await initProject(targetPath || process.cwd(), options);
